@@ -60,24 +60,24 @@ let config = {
     SIM_RESOLUTION: 128,
     DYE_RESOLUTION: 1024,
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 1,
-    VELOCITY_DISSIPATION: 0.2,
+    DENSITY_DISSIPATION: 0.92,
+    VELOCITY_DISSIPATION: 0.6,
     PRESSURE: 0.8,
     PRESSURE_ITERATIONS: 20,
-    CURL: 30,
-    SPLAT_RADIUS: 0.25,
-    SPLAT_FORCE: 6000,
+    CURL: 12,
+    SPLAT_RADIUS: 0.4,
+    SPLAT_FORCE: 3000,
     SHADING: true,
     COLORFUL: true,
-    COLOR_UPDATE_SPEED: 10,
+    COLOR_UPDATE_SPEED: 5,
     PAUSED: false,
     BACK_COLOR: { r: 0, g: 0, b: 0 },
     TRANSPARENT: false,
     BLOOM: true,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.8,
-    BLOOM_THRESHOLD: 0.6,
+    BLOOM_INTENSITY: 0.4,
+    BLOOM_THRESHOLD: 0.4,
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
@@ -1644,6 +1644,15 @@ function hashCode (s) {
     }
     return hash;
 }; 
+// BG TOGGLE — press B for black, W for white
+window.addEventListener('keydown', e => {
+    if (e.key === 'b' || e.key === 'B') {
+        config.BACK_COLOR = { r: 0, g: 0, b: 0 };
+    }
+    if (e.key === 'w' || e.key === 'W') {
+        config.BACK_COLOR = { r: 255, g: 255, b: 255 };
+    }
+});
 // AUDIO → FLUID
 window.addEventListener('load', () => {
   setTimeout(() => {
