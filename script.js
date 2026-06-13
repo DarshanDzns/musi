@@ -69,15 +69,15 @@ let config = {
     SPLAT_FORCE: 3000,
     SHADING: true,
     COLORFUL: true,
-    COLOR_UPDATE_SPEED: 5,
+    COLOR_UPDATE_SPEED: 4,
     PAUSED: false,
     BACK_COLOR: { r: 0, g: 0, b: 0 },
     TRANSPARENT: false,
     BLOOM: true,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.4,
-    BLOOM_THRESHOLD: 0.4,
+    BLOOM_INTENSITY: 0.3,
+    BLOOM_THRESHOLD: 0.3,
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: true,
     SUNRAYS_RESOLUTION: 196,
@@ -113,7 +113,7 @@ if (!ext.supportLinearFiltering) {
     config.SUNRAYS = false;
 }
 
-startGUI();
+// GUI removed — clean fullscreen mode
 
 function getWebGLContext (canvas) {
     const params = { alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false };
@@ -206,78 +206,8 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 }
 
 function startGUI () {
-    var gui = new dat.GUI({ width: 300 });
-    gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
-    gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
-    gui.add(config, 'DENSITY_DISSIPATION', 0, 4.0).name('density diffusion');
-    gui.add(config, 'VELOCITY_DISSIPATION', 0, 4.0).name('velocity diffusion');
-    gui.add(config, 'PRESSURE', 0.0, 1.0).name('pressure');
-    gui.add(config, 'CURL', 0, 50).name('vorticity').step(1);
-    gui.add(config, 'SPLAT_RADIUS', 0.01, 1.0).name('splat radius');
-    gui.add(config, 'SHADING').name('shading').onFinishChange(updateKeywords);
-    gui.add(config, 'COLORFUL').name('colorful');
-    gui.add(config, 'PAUSED').name('paused').listen();
-
-    gui.add({ fun: () => {
-        splatStack.push(parseInt(Math.random() * 20) + 5);
-    } }, 'fun').name('Random splats');
-
-    let bloomFolder = gui.addFolder('Bloom');
-    bloomFolder.add(config, 'BLOOM').name('enabled').onFinishChange(updateKeywords);
-    bloomFolder.add(config, 'BLOOM_INTENSITY', 0.1, 2.0).name('intensity');
-    bloomFolder.add(config, 'BLOOM_THRESHOLD', 0.0, 1.0).name('threshold');
-
-    let sunraysFolder = gui.addFolder('Sunrays');
-    sunraysFolder.add(config, 'SUNRAYS').name('enabled').onFinishChange(updateKeywords);
-    sunraysFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('weight');
-
-    let captureFolder = gui.addFolder('Capture');
-    captureFolder.addColor(config, 'BACK_COLOR').name('background color');
-    captureFolder.add(config, 'TRANSPARENT').name('transparent');
-    captureFolder.add({ fun: captureScreenshot }, 'fun').name('take screenshot');
-
-    let github = gui.add({ fun : () => {
-        window.open('https://github.com/PavelDoGreat/WebGL-Fluid-Simulation');
-        ga('send', 'event', 'link button', 'github');
-    } }, 'fun').name('Github');
-    github.__li.className = 'cr function bigFont';
-    github.__li.style.borderLeft = '3px solid #8C8C8C';
-    let githubIcon = document.createElement('span');
-    github.domElement.parentElement.appendChild(githubIcon);
-    githubIcon.className = 'icon github';
-
-    let twitter = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'twitter');
-        window.open('https://twitter.com/PavelDoGreat');
-    } }, 'fun').name('Twitter');
-    twitter.__li.className = 'cr function bigFont';
-    twitter.__li.style.borderLeft = '3px solid #8C8C8C';
-    let twitterIcon = document.createElement('span');
-    twitter.domElement.parentElement.appendChild(twitterIcon);
-    twitterIcon.className = 'icon twitter';
-
-    let discord = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'discord');
-        window.open('https://discordapp.com/invite/CeqZDDE');
-    } }, 'fun').name('Discord');
-    discord.__li.className = 'cr function bigFont';
-    discord.__li.style.borderLeft = '3px solid #8C8C8C';
-    let discordIcon = document.createElement('span');
-    discord.domElement.parentElement.appendChild(discordIcon);
-    discordIcon.className = 'icon discord';
-
-    let app = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'app');
-        window.open('http://onelink.to/5b58bn');
-    } }, 'fun').name('Check out mobile app');
-    app.__li.className = 'cr function appBigFont';
-    app.__li.style.borderLeft = '3px solid #00FF7F';
-    let appIcon = document.createElement('span');
-    app.domElement.parentElement.appendChild(appIcon);
-    appIcon.className = 'icon app';
-
-    if (isMobile())
-        gui.close();
+    // Panel removed for clean fullscreen experience
+    // Press B for black bg, W for white bg
 }
 
 function isMobile () {
@@ -1563,7 +1493,7 @@ function correctDeltaY (delta) {
 }
 
 function generateColor () {
-    let c = HSVtoRGB(Math.random(), 1.0, 1.0);
+    let c = HSVtoRGB(Math.random(), 0.5, 0.75);
     c.r *= 0.15;
     c.g *= 0.15;
     c.b *= 0.15;
@@ -1643,8 +1573,10 @@ function hashCode (s) {
         hash |= 0; // Convert to 32bit integer
     }
     return hash;
-}; 
-// BG TOGGLE — press B for black, W for white
+};
+// ============================
+// BG TOGGLE — B = black, W = white
+// ============================
 window.addEventListener('keydown', e => {
     if (e.key === 'b' || e.key === 'B') {
         config.BACK_COLOR = { r: 0, g: 0, b: 0 };
@@ -1653,35 +1585,39 @@ window.addEventListener('keydown', e => {
         config.BACK_COLOR = { r: 255, g: 255, b: 255 };
     }
 });
-// AUDIO → FLUID
+
+// ============================
+// AUDIO → FLUID (mic listener)
+// ============================
 window.addEventListener('load', () => {
-  setTimeout(() => {
-    const MIC_SENSITIVITY = 0.15;
-    const SPLAT_COOLDOWN  = 80;
-    let lastFire = 0;
+    setTimeout(() => {
+        const MIC_SENSITIVITY = 0.15;
+        const SPLAT_COOLDOWN  = 80;
+        let lastFire = 0;
 
-    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      .then(stream => {
-        const ctx      = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 256;
-        ctx.createMediaStreamSource(stream).connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            .then(stream => {
+                const ctx      = new (window.AudioContext || window.webkitAudioContext)();
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 256;
+                ctx.createMediaStreamSource(stream).connect(analyser);
+                const data = new Uint8Array(analyser.frequencyBinCount);
 
-        function loop() {
-          requestAnimationFrame(loop);
-          analyser.getByteFrequencyData(data);
-          let sum = 0;
-          for (let i = 0; i < data.length; i++) sum += data[i];
-          const volume = sum / data.length / 255;
-          const now = performance.now();
-          if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
-            lastFire = now;
-            splatStack.push(Math.floor(volume * 8) + 2);
-          }
-        }
-        loop();
-      })
-      .catch(e => console.warn('mic blocked:', e));
-  }, 1500);
+                function loop() {
+                    requestAnimationFrame(loop);
+                    analyser.getByteFrequencyData(data);
+                    let sum = 0;
+                    for (let i = 0; i < data.length; i++) sum += data[i];
+                    const volume = sum / data.length / 255;
+                    const now = performance.now();
+                    if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
+                        lastFire = now;
+                        splatStack.push(Math.floor(volume * 8) + 2);
+                    }
+                }
+                loop();
+                console.log('🎸 mic active — play something!');
+            })
+            .catch(e => console.warn('mic blocked:', e));
+    }, 1500);
 });
