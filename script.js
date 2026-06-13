@@ -1643,4 +1643,36 @@ function hashCode (s) {
         hash |= 0; // Convert to 32bit integer
     }
     return hash;
-};
+}; 
+// AUDIO → FLUID
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    const MIC_SENSITIVITY = 0.15;
+    const SPLAT_COOLDOWN  = 80;
+    let lastFire = 0;
+
+    navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(stream => {
+        const ctx      = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 256;
+        ctx.createMediaStreamSource(stream).connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        function loop() {
+          requestAnimationFrame(loop);
+          analyser.getByteFrequencyData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) sum += data[i];
+          const volume = sum / data.length / 255;
+          const now = performance.now();
+          if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
+            lastFire = now;
+            splatStack.push(Math.floor(volume * 8) + 2);
+          }
+        }
+        loop();
+      })
+      .catch(e => console.warn('mic blocked:', e));
+  }, 1500);
+});
