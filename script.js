@@ -60,13 +60,13 @@ let config = {
     SIM_RESOLUTION: 128,
     DYE_RESOLUTION: 1024,
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 0.04,
-    VELOCITY_DISSIPATION: 1.5,
+    DENSITY_DISSIPATION: 0.3,
+    VELOCITY_DISSIPATION: 2,
     PRESSURE: 0.8,
     PRESSURE_ITERATIONS: 20,
     CURL: 8,
-    SPLAT_RADIUS: 0.45,
-    SPLAT_FORCE: 2000,
+    SPLAT_RADIUS: 0.35,
+    SPLAT_FORCE: 1500,
     SHADING: true,
     COLORFUL: true,
     COLOR_UPDATE_SPEED: 3,
@@ -76,8 +76,8 @@ let config = {
     BLOOM: true,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
-    BLOOM_INTENSITY: 0.25,
-    BLOOM_THRESHOLD: 0.4,
+    BLOOM_INTENSITY: 0.15,
+    BLOOM_THRESHOLD: 0.5,
     BLOOM_SOFT_KNEE: 0.7,
     SUNRAYS: false,
     SUNRAYS_RESOLUTION: 196,
@@ -276,7 +276,6 @@ function startGUI () {
     app.domElement.parentElement.appendChild(appIcon);
     appIcon.className = 'icon app';
 
-    gui.close();
     gui.domElement.style.display = 'none';
     window.__fluidGUI = gui;
 }
@@ -1565,9 +1564,9 @@ function correctDeltaY (delta) {
 
 function generateColor () {
     let c = HSVtoRGB(Math.random(), 0.45, 0.85);
-    c.r *= 0.25;
-    c.g *= 0.25;
-    c.b *= 0.25;
+    c.r *= 0.15;
+    c.g *= 0.15;
+    c.b *= 0.15;
     return c;
 }
 
@@ -1647,7 +1646,7 @@ function hashCode (s) {
 };
 // ============================
 // CONTROLS TOGGLE (gear icon)
-// Click the gear in the corner to show/hide the settings panel
+// One click shows the full settings panel, click again hides it
 // ============================
 window.addEventListener('load', () => {
     const gearBtn = document.createElement('div');
@@ -1681,14 +1680,15 @@ window.addEventListener('load', () => {
 });
 
 // ============================
-// PAPER TEXTURE OVERLAY
-// Subtle grain on top of the fluid for a watercolour-on-paper feel
+// PAPER TEXTURE OVERLAY (subtle)
+// Large, soft grain — not harsh static
 // ============================
 window.addEventListener('load', () => {
     const noiseSVG = `
         <svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'>
             <filter id='n'>
-                <feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/>
+                <feTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='2' stitchTiles='stitch' result='noise'/>
+                <feColorMatrix type='matrix' values='0 0 0 0 0.55  0 0 0 0 0.5  0 0 0 0 0.45  0 0 0 0.4 0'/>
             </filter>
             <rect width='100%' height='100%' filter='url(%23n)'/>
         </svg>`;
@@ -1702,10 +1702,10 @@ window.addEventListener('load', () => {
     paper.style.height = '100%';
     paper.style.pointerEvents = 'none';
     paper.style.zIndex = '40';
-    paper.style.mixBlendMode = 'multiply';
-    paper.style.opacity = '0.10';
+    paper.style.mixBlendMode = 'soft-light';
+    paper.style.opacity = '0.35';
     paper.style.backgroundImage = `url("data:image/svg+xml,${encoded}")`;
-    paper.style.backgroundSize = '300px 300px';
+    paper.style.backgroundSize = '600px 600px';
 
     document.body.appendChild(paper);
 });
@@ -1731,11 +1731,12 @@ window.addEventListener('keydown', e => {
 
 // ============================
 // AUDIO → FLUID (mic listener)
+// Tuned to react to playing without flooding the canvas
 // ============================
 window.addEventListener('load', () => {
     setTimeout(() => {
-        const MIC_SENSITIVITY = 0.15;
-        const SPLAT_COOLDOWN  = 80;
+        const MIC_SENSITIVITY = 0.18;
+        const SPLAT_COOLDOWN  = 180;
         let lastFire = 0;
 
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -1755,7 +1756,7 @@ window.addEventListener('load', () => {
                     const now = performance.now();
                     if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
                         lastFire = now;
-                        splatStack.push(Math.floor(volume * 6) + 1);
+                        splatStack.push(1);
                     }
                 }
                 loop();
