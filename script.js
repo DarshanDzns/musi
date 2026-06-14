@@ -85,6 +85,9 @@ let config = {
     COLOR_SATURATION: 0.55,
     COLOR_VALUE: 0.65,
     COLOR_MULTIPLIER: 0.35,
+    POSTERIZE: true,
+    POSTERIZE_LEVELS: 5,
+    EDGE_STRENGTH: 0.45,
 }
 
 function pointerPrototype () {
@@ -211,118 +214,10 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 function startGUI () {
     var gui = new dat.GUI({ width: 280 });
 
-    // ============================
-    // PRESETS
-    // ============================
-    let presetsFolder = gui.addFolder('Presets');
-    presetsFolder.open();
-
     function refreshGUIDisplay (folder) {
         folder.__controllers.forEach(c => c.updateDisplay());
         for (let key in folder.__folders) refreshGUIDisplay(folder.__folders[key]);
     }
-
-    function applyPreset (p) {
-        Object.assign(config, p);
-        updateKeywords();
-        initFramebuffers();
-        refreshGUIDisplay(gui);
-    }
-
-    function addPresetButton (label, snapshot, presetName) {
-        let ctrl = presetsFolder.add({ fun: () => applyPreset(snapshot) }, 'fun').name(label);
-
-        if (presetName) {
-            ctrl.__li.style.position = 'relative';
-            let delBtn = document.createElement('span');
-            delBtn.textContent = '✕';
-            delBtn.className = 'preset-delete';
-            delBtn.title = 'Delete preset';
-            delBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!confirm('Delete preset "' + presetName + '"?')) return;
-                let saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
-                saved = saved.filter(p => p.name !== presetName);
-                localStorage.setItem('fluidPresets', JSON.stringify(saved));
-                ctrl.__li.remove();
-                presetsFolder.__controllers = presetsFolder.__controllers.filter(c => c !== ctrl);
-            });
-            ctrl.__li.appendChild(delBtn);
-        }
-        return ctrl;
-    }
-
-    addPresetButton('Midnight Ink', {
-        BACK_COLOR: { r: 0, g: 0, b: 0 },
-        BLOOM: true,
-        BLOOM_INTENSITY: 0.5,
-        BLOOM_THRESHOLD: 0.4,
-        SUNRAYS: true,
-        SUNRAYS_WEIGHT: 0.8,
-        CURL: 15,
-        SPLAT_RADIUS: 0.3,
-        SPLAT_FORCE: 1500,
-        DENSITY_DISSIPATION: 0.3,
-        VELOCITY_DISSIPATION: 2,
-        COLOR_SATURATION: 0.45,
-        COLOR_VALUE: 0.9,
-        COLOR_MULTIPLIER: 0.15,
-    });
-
-    addPresetButton('Paper Watercolour', {
-        BACK_COLOR: { r: 238, g: 232, b: 220 },
-        BLOOM: false,
-        BLOOM_INTENSITY: 0.15,
-        BLOOM_THRESHOLD: 0.5,
-        SUNRAYS: false,
-        SUNRAYS_WEIGHT: 1.0,
-        CURL: 4,
-        SPLAT_RADIUS: 0.4,
-        SPLAT_FORCE: 1200,
-        DENSITY_DISSIPATION: 0.2,
-        VELOCITY_DISSIPATION: 2.5,
-        COLOR_SATURATION: 0.55,
-        COLOR_VALUE: 0.65,
-        COLOR_MULTIPLIER: 0.35,
-    });
-
-    presetsFolder.add({ fun: () => {
-        const name = prompt('Name this preset:');
-        if (!name) return;
-        const snapshot = {
-            BACK_COLOR: { r: config.BACK_COLOR.r, g: config.BACK_COLOR.g, b: config.BACK_COLOR.b },
-            DENSITY_DISSIPATION: config.DENSITY_DISSIPATION,
-            VELOCITY_DISSIPATION: config.VELOCITY_DISSIPATION,
-            PRESSURE: config.PRESSURE,
-            CURL: config.CURL,
-            SPLAT_RADIUS: config.SPLAT_RADIUS,
-            SPLAT_FORCE: config.SPLAT_FORCE,
-            BLOOM: config.BLOOM,
-            BLOOM_INTENSITY: config.BLOOM_INTENSITY,
-            BLOOM_THRESHOLD: config.BLOOM_THRESHOLD,
-            SUNRAYS: config.SUNRAYS,
-            SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
-            COLOR_SATURATION: config.COLOR_SATURATION,
-            COLOR_VALUE: config.COLOR_VALUE,
-            COLOR_MULTIPLIER: config.COLOR_MULTIPLIER,
-        };
-        const saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
-        saved.push({ name, config: snapshot });
-        localStorage.setItem('fluidPresets', JSON.stringify(saved));
-        addPresetButton(name, snapshot, name);
-    } }, 'fun').name('+ Save current as preset');
-
-    JSON.parse(localStorage.getItem('fluidPresets') || '[]').forEach(p => {
-        addPresetButton(p.name, p.config, p.name);
-    });
-
-    // ============================
-    // PIGMENT
-    // ============================
-    let pigmentFolder = gui.addFolder('Pigment');
-    pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
-    pigmentFolder.add(config, 'COLOR_VALUE', 0, 1).name('brightness');
-    pigmentFolder.add(config, 'COLOR_MULTIPLIER', 0.05, 0.6).name('intensity');
 
     gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
     gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
@@ -348,10 +243,115 @@ function startGUI () {
     sunraysFolder.add(config, 'SUNRAYS').name('enabled').onFinishChange(updateKeywords);
     sunraysFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('weight');
 
+    let pigmentFolder = gui.addFolder('Pigment');
+    pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
+    pigmentFolder.add(config, 'COLOR_VALUE', 0, 1).name('brightness');
+    pigmentFolder.add(config, 'COLOR_MULTIPLIER', 0.05, 0.6).name('intensity');
+
+    let illustrationFolder = gui.addFolder('Illustration');
+    illustrationFolder.add(config, 'POSTERIZE').name('flat colour cells').onFinishChange(updateKeywords);
+    illustrationFolder.add(config, 'POSTERIZE_LEVELS', 2, 12).step(1).name('colour bands');
+    illustrationFolder.add(config, 'EDGE_STRENGTH', 0, 1).name('paper edges');
+
     let captureFolder = gui.addFolder('Capture');
     captureFolder.addColor(config, 'BACK_COLOR').name('background color');
     captureFolder.add(config, 'TRANSPARENT').name('transparent');
     captureFolder.add({ fun: captureScreenshot }, 'fun').name('take screenshot');
+
+    // ============================
+    // PRESETS (placed last so the folder sits at the bottom)
+    // ============================
+    let presetsFolder = gui.addFolder('Presets');
+    presetsFolder.open();
+
+    function applyPreset (p) {
+        Object.assign(config, p);
+        updateKeywords();
+        initFramebuffers();
+        refreshGUIDisplay(gui);
+    }
+
+    function addPresetButton (label, snapshot, presetName) {
+        let ctrl = presetsFolder.add({ fun: () => applyPreset(snapshot) }, 'fun').name(label);
+        ctrl.__li.style.position = 'relative';
+
+        let delBtn = document.createElement('span');
+        delBtn.textContent = '✕';
+        delBtn.className = 'preset-delete';
+        delBtn.title = 'Delete preset';
+        delBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!confirm('Delete preset "' + presetName + '"?')) return;
+            let saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
+            saved = saved.filter(p => p.name !== presetName);
+            localStorage.setItem('fluidPresets', JSON.stringify(saved));
+            ctrl.__li.remove();
+            presetsFolder.__controllers = presetsFolder.__controllers.filter(c => c !== ctrl);
+        });
+        ctrl.__li.appendChild(delBtn);
+        return ctrl;
+    }
+
+    function snapshotConfig () {
+        return {
+            BACK_COLOR: { r: config.BACK_COLOR.r, g: config.BACK_COLOR.g, b: config.BACK_COLOR.b },
+            DENSITY_DISSIPATION: config.DENSITY_DISSIPATION,
+            VELOCITY_DISSIPATION: config.VELOCITY_DISSIPATION,
+            PRESSURE: config.PRESSURE,
+            CURL: config.CURL,
+            SPLAT_RADIUS: config.SPLAT_RADIUS,
+            SPLAT_FORCE: config.SPLAT_FORCE,
+            BLOOM: config.BLOOM,
+            BLOOM_INTENSITY: config.BLOOM_INTENSITY,
+            BLOOM_THRESHOLD: config.BLOOM_THRESHOLD,
+            SUNRAYS: config.SUNRAYS,
+            SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
+            COLOR_SATURATION: config.COLOR_SATURATION,
+            COLOR_VALUE: config.COLOR_VALUE,
+            COLOR_MULTIPLIER: config.COLOR_MULTIPLIER,
+            POSTERIZE: config.POSTERIZE,
+            POSTERIZE_LEVELS: config.POSTERIZE_LEVELS,
+            EDGE_STRENGTH: config.EDGE_STRENGTH,
+        };
+    }
+
+    presetsFolder.add({ fun: () => {
+        const name = prompt('Name this preset:');
+        if (!name) return;
+        const snapshot = snapshotConfig();
+        const saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
+        saved.push({ name, config: snapshot });
+        localStorage.setItem('fluidPresets', JSON.stringify(saved));
+        addPresetButton(name, snapshot, name);
+    } }, 'fun').name('+ Save current as preset');
+
+    const DEFAULT_PRESETS = [
+        { name: 'Midnight Ink', config: {
+            BACK_COLOR: { r: 0, g: 0, b: 0 },
+            BLOOM: true, BLOOM_INTENSITY: 0.5, BLOOM_THRESHOLD: 0.4,
+            SUNRAYS: true, SUNRAYS_WEIGHT: 0.8,
+            CURL: 15, SPLAT_RADIUS: 0.3, SPLAT_FORCE: 1500,
+            DENSITY_DISSIPATION: 0.3, VELOCITY_DISSIPATION: 2,
+            COLOR_SATURATION: 0.45, COLOR_VALUE: 0.9, COLOR_MULTIPLIER: 0.15,
+            POSTERIZE: false, POSTERIZE_LEVELS: 5, EDGE_STRENGTH: 0.45,
+        }},
+        { name: 'Paper Watercolour', config: {
+            BACK_COLOR: { r: 238, g: 232, b: 220 },
+            BLOOM: false, BLOOM_INTENSITY: 0.15, BLOOM_THRESHOLD: 0.5,
+            SUNRAYS: false, SUNRAYS_WEIGHT: 1.0,
+            CURL: 4, SPLAT_RADIUS: 0.4, SPLAT_FORCE: 1200,
+            DENSITY_DISSIPATION: 0.2, VELOCITY_DISSIPATION: 2.5,
+            COLOR_SATURATION: 0.55, COLOR_VALUE: 0.65, COLOR_MULTIPLIER: 0.35,
+            POSTERIZE: true, POSTERIZE_LEVELS: 5, EDGE_STRENGTH: 0.45,
+        }},
+    ];
+
+    let savedPresets = JSON.parse(localStorage.getItem('fluidPresets') || 'null');
+    if (savedPresets === null) {
+        savedPresets = DEFAULT_PRESETS;
+        localStorage.setItem('fluidPresets', JSON.stringify(savedPresets));
+    }
+    savedPresets.forEach(p => addPresetButton(p.name, p.config, p.name));
 
     gui.domElement.style.display = 'none';
     window.__fluidGUI = gui;
@@ -638,6 +638,9 @@ const displayShaderSource = `
     uniform sampler2D uDithering;
     uniform vec2 ditherScale;
     uniform vec2 texelSize;
+    uniform vec3 uBackColor;
+    uniform float uPosterizeLevels;
+    uniform float uEdgeStrength;
 
     vec3 linearToGamma (vec3 color) {
         color = max(color, vec3(0));
@@ -647,12 +650,14 @@ const displayShaderSource = `
     void main () {
         vec3 c = texture2D(uTexture, vUv).rgb;
 
-    #ifdef SHADING
+    #if defined(SHADING) || defined(POSTERIZE)
         vec3 lc = texture2D(uTexture, vL).rgb;
         vec3 rc = texture2D(uTexture, vR).rgb;
         vec3 tc = texture2D(uTexture, vT).rgb;
         vec3 bc = texture2D(uTexture, vB).rgb;
+    #endif
 
+    #ifdef SHADING
         float dx = length(rc) - length(lc);
         float dy = length(tc) - length(bc);
 
@@ -681,6 +686,14 @@ const displayShaderSource = `
         bloom += noise / 255.0;
         bloom = linearToGamma(bloom);
         c += bloom;
+    #endif
+
+    #ifdef POSTERIZE
+        c = floor(c * uPosterizeLevels + 0.5) / uPosterizeLevels;
+
+        float edge = length(rc - lc) + length(tc - bc);
+        edge = smoothstep(0.02, 0.18, edge);
+        c = mix(c, uBackColor, edge * uEdgeStrength);
     #endif
 
         float a = max(c.r, max(c.g, c.b));
@@ -1239,6 +1252,7 @@ function updateKeywords () {
     if (config.SHADING) displayKeywords.push("SHADING");
     if (config.BLOOM) displayKeywords.push("BLOOM");
     if (config.SUNRAYS) displayKeywords.push("SUNRAYS");
+    if (config.POSTERIZE) displayKeywords.push("POSTERIZE");
     displayMaterial.setKeywords(displayKeywords);
 }
 
@@ -1410,7 +1424,7 @@ function drawDisplay (target) {
     let height = target == null ? gl.drawingBufferHeight : target.height;
 
     displayMaterial.bind();
-    if (config.SHADING)
+    if (config.SHADING || config.POSTERIZE)
         gl.uniform2f(displayMaterial.uniforms.texelSize, 1.0 / width, 1.0 / height);
     gl.uniform1i(displayMaterial.uniforms.uTexture, dye.read.attach(0));
     if (config.BLOOM) {
@@ -1421,6 +1435,11 @@ function drawDisplay (target) {
     }
     if (config.SUNRAYS)
         gl.uniform1i(displayMaterial.uniforms.uSunrays, sunrays.attach(3));
+    if (config.POSTERIZE) {
+        gl.uniform3f(displayMaterial.uniforms.uBackColor, config.BACK_COLOR.r / 255, config.BACK_COLOR.g / 255, config.BACK_COLOR.b / 255);
+        gl.uniform1f(displayMaterial.uniforms.uPosterizeLevels, config.POSTERIZE_LEVELS);
+        gl.uniform1f(displayMaterial.uniforms.uEdgeStrength, config.EDGE_STRENGTH);
+    }
     blit(target);
 }
 
@@ -1722,93 +1741,105 @@ function hashCode (s) {
     return hash;
 };
 // ============================
-// MINIMAL PANEL STYLING + CONTROLS TOGGLE (gear icon)
+// WHIMSICAL UI STYLING + CONTROLS TOGGLE (gear icon)
 // ============================
 window.addEventListener('load', () => {
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = 'https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap';
+    document.head.appendChild(fontLink);
+
     const style = document.createElement('style');
     style.innerHTML = `
         .dg.main {
-            font-family: 'Helvetica Neue', Arial, sans-serif !important;
-            background: rgba(250, 246, 238, 0.94) !important;
-            border-radius: 16px !important;
+            font-family: 'Space Mono', monospace !important;
+            background: #fdfaf3 !important;
+            border: 2px solid #2e2a26 !important;
+            border-radius: 22px 8px 22px 8px !important;
             overflow: hidden;
-            box-shadow: 0 10px 40px rgba(60, 45, 30, 0.18);
-            border: 1px solid rgba(60, 45, 30, 0.08);
-            padding: 4px;
+            box-shadow: 6px 6px 0px rgba(46, 42, 38, 0.12);
+            padding: 6px;
         }
         .dg.main .close-button { display: none !important; }
         .dg .property-name {
-            color: #6b5d4f !important;
+            color: #5a5048 !important;
             font-size: 11px;
             letter-spacing: 0.02em;
         }
         .dg li:not(.folder) {
             background: transparent !important;
-            border-bottom: 1px solid rgba(60, 45, 30, 0.06) !important;
+            border-bottom: 1px dashed rgba(46, 42, 38, 0.15) !important;
         }
         .dg li.folder {
             border: none !important;
         }
         .dg .title {
-            background: rgba(60, 45, 30, 0.04) !important;
-            color: #4a3f35 !important;
-            border-radius: 8px !important;
-            font-weight: 600;
+            background: #ffe8d6 !important;
+            color: #3a342e !important;
+            border-radius: 14px 4px 14px 4px !important;
+            font-weight: 700;
             font-size: 12px;
-            margin: 2px 0;
+            margin: 3px 2px;
+            border: 1.5px solid #2e2a26 !important;
         }
         .dg .title:hover {
-            background: rgba(60, 45, 30, 0.08) !important;
+            background: #ffd6ba !important;
         }
         .dg .closed .title {
-            border-radius: 8px !important;
+            border-radius: 14px 4px 14px 4px !important;
         }
         .dg .cr.function {
-            background: rgba(176, 137, 104, 0.10) !important;
-            border-radius: 8px !important;
-            margin: 3px 4px;
-            border: none !important;
+            background: #d9f2e6 !important;
+            border-radius: 16px 5px 16px 5px !important;
+            margin: 4px;
+            border: 1.5px solid #2e2a26 !important;
+            transition: transform 0.1s ease;
         }
         .dg .cr.function:hover {
-            background: rgba(176, 137, 104, 0.22) !important;
+            background: #bdeed5 !important;
+            transform: translate(-1px, -1px);
         }
         .dg .cr.function .property-name {
-            color: #8a6a4d !important;
+            color: #2e2a26 !important;
             text-align: center;
             width: 100%;
-            font-weight: 500;
+            font-weight: 700;
         }
         .dg .cr.boolean { border: none !important; }
         .dg .c input[type=text] {
-            background: rgba(60, 45, 30, 0.05) !important;
-            color: #4a3f35 !important;
-            border-radius: 6px !important;
-            border: none !important;
+            background: #f3ece0 !important;
+            color: #3a342e !important;
+            border-radius: 8px !important;
+            border: 1.5px solid rgba(46,42,38,0.2) !important;
             box-shadow: none !important;
+            font-family: 'Space Mono', monospace !important;
         }
         .dg .slider {
-            background: rgba(60, 45, 30, 0.08) !important;
-            border-radius: 6px !important;
+            background: #f3ece0 !important;
+            border-radius: 8px !important;
+            border: 1.5px solid rgba(46,42,38,0.15) !important;
         }
         .dg .slider-fg {
-            background: #b08968 !important;
-            border-radius: 6px !important;
+            background: #ffb38a !important;
+            border-radius: 8px !important;
         }
         .dg select {
-            background: rgba(60, 45, 30, 0.05) !important;
-            color: #4a3f35 !important;
-            border: none !important;
-            border-radius: 6px !important;
+            background: #f3ece0 !important;
+            color: #3a342e !important;
+            border: 1.5px solid rgba(46,42,38,0.2) !important;
+            border-radius: 8px !important;
+            font-family: 'Space Mono', monospace !important;
         }
         .preset-delete {
             position: absolute;
-            right: 8px;
+            right: 10px;
             top: 50%;
             transform: translateY(-50%);
-            opacity: 0.35;
-            font-size: 11px;
+            opacity: 0.4;
+            font-size: 12px;
             cursor: pointer;
-            color: #8a6a4d;
+            color: #2e2a26;
+            font-weight: 700;
         }
         .preset-delete:hover { opacity: 1; }
     `;
@@ -1819,21 +1850,29 @@ window.addEventListener('load', () => {
     gearBtn.style.position = 'fixed';
     gearBtn.style.top = '14px';
     gearBtn.style.right = '14px';
-    gearBtn.style.width = '40px';
-    gearBtn.style.height = '40px';
+    gearBtn.style.width = '42px';
+    gearBtn.style.height = '42px';
     gearBtn.style.display = 'flex';
     gearBtn.style.alignItems = 'center';
     gearBtn.style.justifyContent = 'center';
     gearBtn.style.fontSize = '20px';
-    gearBtn.style.color = 'rgba(90, 75, 60, 0.6)';
-    gearBtn.style.background = 'rgba(250,246,238,0.7)';
-    gearBtn.style.borderRadius = '50%';
+    gearBtn.style.fontFamily = "'Space Mono', monospace";
+    gearBtn.style.color = '#3a342e';
+    gearBtn.style.background = '#ffe8d6';
+    gearBtn.style.border = '2px solid #2e2a26';
+    gearBtn.style.borderRadius = '50% 40% 50% 40%';
     gearBtn.style.cursor = 'pointer';
     gearBtn.style.zIndex = '50';
     gearBtn.style.userSelect = 'none';
-    gearBtn.style.backdropFilter = 'blur(4px)';
-    gearBtn.style.boxShadow = '0 2px 10px rgba(60,45,30,0.12)';
+    gearBtn.style.boxShadow = '3px 3px 0px rgba(46,42,38,0.15)';
     gearBtn.title = 'Settings';
+
+    gearBtn.addEventListener('mouseenter', () => {
+        gearBtn.style.transform = 'rotate(20deg)';
+    });
+    gearBtn.addEventListener('mouseleave', () => {
+        gearBtn.style.transform = 'rotate(0deg)';
+    });
 
     gearBtn.addEventListener('click', () => {
         const gui = window.__fluidGUI;
