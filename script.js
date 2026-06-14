@@ -207,6 +207,78 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 
 function startGUI () {
     var gui = new dat.GUI({ width: 300 });
+
+    // ============================
+    // PRESETS
+    // ============================
+    let presetsFolder = gui.addFolder('Presets');
+    presetsFolder.open();
+
+    function refreshGUIDisplay (folder) {
+        folder.__controllers.forEach(c => c.updateDisplay());
+        for (let key in folder.__folders) refreshGUIDisplay(folder.__folders[key]);
+    }
+
+    function applyPreset (p) {
+        Object.assign(config, p);
+        updateKeywords();
+        initFramebuffers();
+        refreshGUIDisplay(gui);
+    }
+
+    function addPresetButton (label, snapshot) {
+        presetsFolder.add({ fun: () => applyPreset(snapshot) }, 'fun').name(label);
+    }
+
+    addPresetButton('🌙 Midnight Ink', {
+        BACK_COLOR: { r: 0, g: 0, b: 0 },
+        BLOOM_INTENSITY: 0.5,
+        BLOOM_THRESHOLD: 0.4,
+        SUNRAYS: true,
+        SUNRAYS_WEIGHT: 0.8,
+        CURL: 15,
+        SPLAT_RADIUS: 0.3,
+        DENSITY_DISSIPATION: 0.3,
+    });
+
+    addPresetButton('📜 Paper Watercolour', {
+        BACK_COLOR: { r: 235, g: 227, b: 211 },
+        BLOOM_INTENSITY: 0.15,
+        BLOOM_THRESHOLD: 0.5,
+        SUNRAYS: false,
+        SUNRAYS_WEIGHT: 1.0,
+        CURL: 8,
+        SPLAT_RADIUS: 0.35,
+        DENSITY_DISSIPATION: 0.3,
+    });
+
+    presetsFolder.add({ fun: () => {
+        const name = prompt('Name this preset:');
+        if (!name) return;
+        const snapshot = {
+            BACK_COLOR: { r: config.BACK_COLOR.r, g: config.BACK_COLOR.g, b: config.BACK_COLOR.b },
+            DENSITY_DISSIPATION: config.DENSITY_DISSIPATION,
+            VELOCITY_DISSIPATION: config.VELOCITY_DISSIPATION,
+            PRESSURE: config.PRESSURE,
+            CURL: config.CURL,
+            SPLAT_RADIUS: config.SPLAT_RADIUS,
+            SPLAT_FORCE: config.SPLAT_FORCE,
+            BLOOM: config.BLOOM,
+            BLOOM_INTENSITY: config.BLOOM_INTENSITY,
+            BLOOM_THRESHOLD: config.BLOOM_THRESHOLD,
+            SUNRAYS: config.SUNRAYS,
+            SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
+        };
+        const saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
+        saved.push({ name, config: snapshot });
+        localStorage.setItem('fluidPresets', JSON.stringify(saved));
+        addPresetButton('⭐ ' + name, snapshot);
+    } }, 'fun').name('💾 Save current as preset');
+
+    JSON.parse(localStorage.getItem('fluidPresets') || '[]').forEach(p => {
+        addPresetButton('⭐ ' + p.name, p.config);
+    });
+
     gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
     gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
     gui.add(config, 'DENSITY_DISSIPATION', 0, 4.0).name('density diffusion');
@@ -235,46 +307,6 @@ function startGUI () {
     captureFolder.addColor(config, 'BACK_COLOR').name('background color');
     captureFolder.add(config, 'TRANSPARENT').name('transparent');
     captureFolder.add({ fun: captureScreenshot }, 'fun').name('take screenshot');
-
-    let github = gui.add({ fun : () => {
-        window.open('https://github.com/PavelDoGreat/WebGL-Fluid-Simulation');
-        ga('send', 'event', 'link button', 'github');
-    } }, 'fun').name('Github');
-    github.__li.className = 'cr function bigFont';
-    github.__li.style.borderLeft = '3px solid #8C8C8C';
-    let githubIcon = document.createElement('span');
-    github.domElement.parentElement.appendChild(githubIcon);
-    githubIcon.className = 'icon github';
-
-    let twitter = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'twitter');
-        window.open('https://twitter.com/PavelDoGreat');
-    } }, 'fun').name('Twitter');
-    twitter.__li.className = 'cr function bigFont';
-    twitter.__li.style.borderLeft = '3px solid #8C8C8C';
-    let twitterIcon = document.createElement('span');
-    twitter.domElement.parentElement.appendChild(twitterIcon);
-    twitterIcon.className = 'icon twitter';
-
-    let discord = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'discord');
-        window.open('https://discordapp.com/invite/CeqZDDE');
-    } }, 'fun').name('Discord');
-    discord.__li.className = 'cr function bigFont';
-    discord.__li.style.borderLeft = '3px solid #8C8C8C';
-    let discordIcon = document.createElement('span');
-    discord.domElement.parentElement.appendChild(discordIcon);
-    discordIcon.className = 'icon discord';
-
-    let app = gui.add({ fun : () => {
-        ga('send', 'event', 'link button', 'app');
-        window.open('http://onelink.to/5b58bn');
-    } }, 'fun').name('Check out mobile app');
-    app.__li.className = 'cr function appBigFont';
-    app.__li.style.borderLeft = '3px solid #00FF7F';
-    let appIcon = document.createElement('span');
-    app.domElement.parentElement.appendChild(appIcon);
-    appIcon.className = 'icon app';
 
     gui.domElement.style.display = 'none';
     window.__fluidGUI = gui;
@@ -1649,6 +1681,11 @@ function hashCode (s) {
 // One click shows the full settings panel, click again hides it
 // ============================
 window.addEventListener('load', () => {
+    // Hide dat.gui's built-in "Close Controls" / "Open Controls" bar
+    const hideCSS = document.createElement('style');
+    hideCSS.innerHTML = '.dg.main .close-button { display: none !important; }';
+    document.head.appendChild(hideCSS);
+
     const gearBtn = document.createElement('div');
     gearBtn.innerHTML = '⚙';
     gearBtn.style.position = 'fixed';
