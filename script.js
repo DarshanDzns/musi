@@ -60,20 +60,20 @@ let config = {
     SIM_RESOLUTION: 128,
     DYE_RESOLUTION: 1024,
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 0.3,
-    VELOCITY_DISSIPATION: 2,
+    DENSITY_DISSIPATION: 0.2,
+    VELOCITY_DISSIPATION: 2.5,
     PRESSURE: 0.8,
     PRESSURE_ITERATIONS: 20,
-    CURL: 8,
-    SPLAT_RADIUS: 0.35,
-    SPLAT_FORCE: 1500,
+    CURL: 4,
+    SPLAT_RADIUS: 0.4,
+    SPLAT_FORCE: 1200,
     SHADING: true,
     COLORFUL: true,
     COLOR_UPDATE_SPEED: 3,
     PAUSED: false,
-    BACK_COLOR: { r: 235, g: 227, b: 211 },
+    BACK_COLOR: { r: 238, g: 232, b: 220 },
     TRANSPARENT: false,
-    BLOOM: true,
+    BLOOM: false,
     BLOOM_ITERATIONS: 8,
     BLOOM_RESOLUTION: 256,
     BLOOM_INTENSITY: 0.15,
@@ -82,6 +82,9 @@ let config = {
     SUNRAYS: false,
     SUNRAYS_RESOLUTION: 196,
     SUNRAYS_WEIGHT: 1.0,
+    COLOR_SATURATION: 0.55,
+    COLOR_VALUE: 0.65,
+    COLOR_MULTIPLIER: 0.35,
 }
 
 function pointerPrototype () {
@@ -206,7 +209,7 @@ function supportRenderTextureFormat (gl, internalFormat, format, type) {
 }
 
 function startGUI () {
-    var gui = new dat.GUI({ width: 300 });
+    var gui = new dat.GUI({ width: 280 });
 
     // ============================
     // PRESETS
@@ -226,30 +229,61 @@ function startGUI () {
         refreshGUIDisplay(gui);
     }
 
-    function addPresetButton (label, snapshot) {
-        presetsFolder.add({ fun: () => applyPreset(snapshot) }, 'fun').name(label);
+    function addPresetButton (label, snapshot, presetName) {
+        let ctrl = presetsFolder.add({ fun: () => applyPreset(snapshot) }, 'fun').name(label);
+
+        if (presetName) {
+            ctrl.__li.style.position = 'relative';
+            let delBtn = document.createElement('span');
+            delBtn.textContent = '✕';
+            delBtn.className = 'preset-delete';
+            delBtn.title = 'Delete preset';
+            delBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!confirm('Delete preset "' + presetName + '"?')) return;
+                let saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
+                saved = saved.filter(p => p.name !== presetName);
+                localStorage.setItem('fluidPresets', JSON.stringify(saved));
+                ctrl.__li.remove();
+                presetsFolder.__controllers = presetsFolder.__controllers.filter(c => c !== ctrl);
+            });
+            ctrl.__li.appendChild(delBtn);
+        }
+        return ctrl;
     }
 
-    addPresetButton('🌙 Midnight Ink', {
+    addPresetButton('Midnight Ink', {
         BACK_COLOR: { r: 0, g: 0, b: 0 },
+        BLOOM: true,
         BLOOM_INTENSITY: 0.5,
         BLOOM_THRESHOLD: 0.4,
         SUNRAYS: true,
         SUNRAYS_WEIGHT: 0.8,
         CURL: 15,
         SPLAT_RADIUS: 0.3,
+        SPLAT_FORCE: 1500,
         DENSITY_DISSIPATION: 0.3,
+        VELOCITY_DISSIPATION: 2,
+        COLOR_SATURATION: 0.45,
+        COLOR_VALUE: 0.9,
+        COLOR_MULTIPLIER: 0.15,
     });
 
-    addPresetButton('📜 Paper Watercolour', {
-        BACK_COLOR: { r: 235, g: 227, b: 211 },
+    addPresetButton('Paper Watercolour', {
+        BACK_COLOR: { r: 238, g: 232, b: 220 },
+        BLOOM: false,
         BLOOM_INTENSITY: 0.15,
         BLOOM_THRESHOLD: 0.5,
         SUNRAYS: false,
         SUNRAYS_WEIGHT: 1.0,
-        CURL: 8,
-        SPLAT_RADIUS: 0.35,
-        DENSITY_DISSIPATION: 0.3,
+        CURL: 4,
+        SPLAT_RADIUS: 0.4,
+        SPLAT_FORCE: 1200,
+        DENSITY_DISSIPATION: 0.2,
+        VELOCITY_DISSIPATION: 2.5,
+        COLOR_SATURATION: 0.55,
+        COLOR_VALUE: 0.65,
+        COLOR_MULTIPLIER: 0.35,
     });
 
     presetsFolder.add({ fun: () => {
@@ -268,16 +302,27 @@ function startGUI () {
             BLOOM_THRESHOLD: config.BLOOM_THRESHOLD,
             SUNRAYS: config.SUNRAYS,
             SUNRAYS_WEIGHT: config.SUNRAYS_WEIGHT,
+            COLOR_SATURATION: config.COLOR_SATURATION,
+            COLOR_VALUE: config.COLOR_VALUE,
+            COLOR_MULTIPLIER: config.COLOR_MULTIPLIER,
         };
         const saved = JSON.parse(localStorage.getItem('fluidPresets') || '[]');
         saved.push({ name, config: snapshot });
         localStorage.setItem('fluidPresets', JSON.stringify(saved));
-        addPresetButton('⭐ ' + name, snapshot);
-    } }, 'fun').name('💾 Save current as preset');
+        addPresetButton(name, snapshot, name);
+    } }, 'fun').name('+ Save current as preset');
 
     JSON.parse(localStorage.getItem('fluidPresets') || '[]').forEach(p => {
-        addPresetButton('⭐ ' + p.name, p.config);
+        addPresetButton(p.name, p.config, p.name);
     });
+
+    // ============================
+    // PIGMENT
+    // ============================
+    let pigmentFolder = gui.addFolder('Pigment');
+    pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
+    pigmentFolder.add(config, 'COLOR_VALUE', 0, 1).name('brightness');
+    pigmentFolder.add(config, 'COLOR_MULTIPLIER', 0.05, 0.6).name('intensity');
 
     gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
     gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
@@ -1595,10 +1640,10 @@ function correctDeltaY (delta) {
 }
 
 function generateColor () {
-    let c = HSVtoRGB(Math.random(), 0.45, 0.85);
-    c.r *= 0.15;
-    c.g *= 0.15;
-    c.b *= 0.15;
+    let c = HSVtoRGB(Math.random(), config.COLOR_SATURATION, config.COLOR_VALUE);
+    c.r *= config.COLOR_MULTIPLIER;
+    c.g *= config.COLOR_MULTIPLIER;
+    c.b *= config.COLOR_MULTIPLIER;
     return c;
 }
 
@@ -1677,14 +1722,97 @@ function hashCode (s) {
     return hash;
 };
 // ============================
-// CONTROLS TOGGLE (gear icon)
-// One click shows the full settings panel, click again hides it
+// MINIMAL PANEL STYLING + CONTROLS TOGGLE (gear icon)
 // ============================
 window.addEventListener('load', () => {
-    // Hide dat.gui's built-in "Close Controls" / "Open Controls" bar
-    const hideCSS = document.createElement('style');
-    hideCSS.innerHTML = '.dg.main .close-button { display: none !important; }';
-    document.head.appendChild(hideCSS);
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .dg.main {
+            font-family: 'Helvetica Neue', Arial, sans-serif !important;
+            background: rgba(250, 246, 238, 0.94) !important;
+            border-radius: 16px !important;
+            overflow: hidden;
+            box-shadow: 0 10px 40px rgba(60, 45, 30, 0.18);
+            border: 1px solid rgba(60, 45, 30, 0.08);
+            padding: 4px;
+        }
+        .dg.main .close-button { display: none !important; }
+        .dg .property-name {
+            color: #6b5d4f !important;
+            font-size: 11px;
+            letter-spacing: 0.02em;
+        }
+        .dg li:not(.folder) {
+            background: transparent !important;
+            border-bottom: 1px solid rgba(60, 45, 30, 0.06) !important;
+        }
+        .dg li.folder {
+            border: none !important;
+        }
+        .dg .title {
+            background: rgba(60, 45, 30, 0.04) !important;
+            color: #4a3f35 !important;
+            border-radius: 8px !important;
+            font-weight: 600;
+            font-size: 12px;
+            margin: 2px 0;
+        }
+        .dg .title:hover {
+            background: rgba(60, 45, 30, 0.08) !important;
+        }
+        .dg .closed .title {
+            border-radius: 8px !important;
+        }
+        .dg .cr.function {
+            background: rgba(176, 137, 104, 0.10) !important;
+            border-radius: 8px !important;
+            margin: 3px 4px;
+            border: none !important;
+        }
+        .dg .cr.function:hover {
+            background: rgba(176, 137, 104, 0.22) !important;
+        }
+        .dg .cr.function .property-name {
+            color: #8a6a4d !important;
+            text-align: center;
+            width: 100%;
+            font-weight: 500;
+        }
+        .dg .cr.boolean { border: none !important; }
+        .dg .c input[type=text] {
+            background: rgba(60, 45, 30, 0.05) !important;
+            color: #4a3f35 !important;
+            border-radius: 6px !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .dg .slider {
+            background: rgba(60, 45, 30, 0.08) !important;
+            border-radius: 6px !important;
+        }
+        .dg .slider-fg {
+            background: #b08968 !important;
+            border-radius: 6px !important;
+        }
+        .dg select {
+            background: rgba(60, 45, 30, 0.05) !important;
+            color: #4a3f35 !important;
+            border: none !important;
+            border-radius: 6px !important;
+        }
+        .preset-delete {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0.35;
+            font-size: 11px;
+            cursor: pointer;
+            color: #8a6a4d;
+        }
+        .preset-delete:hover { opacity: 1; }
+    `;
+    document.head.appendChild(style);
 
     const gearBtn = document.createElement('div');
     gearBtn.innerHTML = '⚙';
@@ -1696,14 +1824,15 @@ window.addEventListener('load', () => {
     gearBtn.style.display = 'flex';
     gearBtn.style.alignItems = 'center';
     gearBtn.style.justifyContent = 'center';
-    gearBtn.style.fontSize = '22px';
-    gearBtn.style.color = 'rgba(80,70,60,0.55)';
-    gearBtn.style.background = 'rgba(255,255,255,0.15)';
+    gearBtn.style.fontSize = '20px';
+    gearBtn.style.color = 'rgba(90, 75, 60, 0.6)';
+    gearBtn.style.background = 'rgba(250,246,238,0.7)';
     gearBtn.style.borderRadius = '50%';
     gearBtn.style.cursor = 'pointer';
     gearBtn.style.zIndex = '50';
     gearBtn.style.userSelect = 'none';
     gearBtn.style.backdropFilter = 'blur(4px)';
+    gearBtn.style.boxShadow = '0 2px 10px rgba(60,45,30,0.12)';
     gearBtn.title = 'Settings';
 
     gearBtn.addEventListener('click', () => {
@@ -1718,7 +1847,6 @@ window.addEventListener('load', () => {
 
 // ============================
 // PAPER TEXTURE OVERLAY (subtle)
-// Large, soft grain — not harsh static
 // ============================
 window.addEventListener('load', () => {
     const noiseSVG = `
@@ -1759,7 +1887,7 @@ window.addEventListener('keydown', e => {
         config.BACK_COLOR = { r: 255, g: 255, b: 255 };
     }
     if (e.key === 'p' || e.key === 'P') {
-        config.BACK_COLOR = { r: 235, g: 227, b: 211 };
+        config.BACK_COLOR = { r: 238, g: 232, b: 220 };
     }
     if (e.key === 's' || e.key === 'S') {
         captureScreenshot();
@@ -1768,7 +1896,6 @@ window.addEventListener('keydown', e => {
 
 // ============================
 // AUDIO → FLUID (mic listener)
-// Tuned to react to playing without flooding the canvas
 // ============================
 window.addEventListener('load', () => {
     setTimeout(() => {
