@@ -24,33 +24,6 @@ SOFTWARE.
 
 'use strict';
 
-// Mobile promo section
-
-const promoPopup = document.getElementsByClassName('promo')[0];
-const promoPopupClose = document.getElementsByClassName('promo-close')[0];
-
-if (isMobile()) {
-    setTimeout(() => {
-        promoPopup.style.display = 'table';
-    }, 20000);
-}
-
-promoPopupClose.addEventListener('click', e => {
-    promoPopup.style.display = 'none';
-});
-
-const appleLink = document.getElementById('apple_link');
-appleLink.addEventListener('click', e => {
-    ga('send', 'event', 'link promo', 'app');
-    window.open('https://apps.apple.com/us/app/fluid-simulation/id1443124993');
-});
-
-const googleLink = document.getElementById('google_link');
-googleLink.addEventListener('click', e => {
-    ga('send', 'event', 'link promo', 'app');
-    window.open('https://play.google.com/store/apps/details?id=games.paveldogreat.fluidsimfree');
-});
-
 // Simulation section
 
 const canvas = document.getElementsByTagName('canvas')[0];
@@ -64,7 +37,7 @@ let config = {
     VELOCITY_DISSIPATION: 2.5,
     PRESSURE: 0.8,
     PRESSURE_ITERATIONS: 20,
-    CURL: 4,
+    CURL: 1.5,
     SPLAT_RADIUS: 0.4,
     SPLAT_FORCE: 1200,
     SHADING: true,
@@ -88,6 +61,8 @@ let config = {
     POSTERIZE: true,
     POSTERIZE_LEVELS: 5,
     EDGE_STRENGTH: 0.45,
+    USE_PALETTE: false,
+    PALETTE: ['#8ecae6', '#ffb4a2', '#b9fbc0', '#ffd6a5', '#cdb4db'],
 }
 
 function pointerPrototype () {
@@ -219,29 +194,36 @@ function startGUI () {
         for (let key in folder.__folders) refreshGUIDisplay(folder.__folders[key]);
     }
 
-    gui.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
-    gui.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
-    gui.add(config, 'DENSITY_DISSIPATION', 0, 4.0).name('density diffusion');
-    gui.add(config, 'VELOCITY_DISSIPATION', 0, 4.0).name('velocity diffusion');
-    gui.add(config, 'PRESSURE', 0.0, 1.0).name('pressure');
-    gui.add(config, 'CURL', 0, 50).name('vorticity').step(1);
-    gui.add(config, 'SPLAT_RADIUS', 0.01, 1.0).name('splat radius');
-    gui.add(config, 'SHADING').name('shading').onFinishChange(updateKeywords);
-    gui.add(config, 'COLORFUL').name('colorful');
-    gui.add(config, 'PAUSED').name('paused').listen();
+    // ============================
+    // PAINT — friendly, intuitive controls
+    // ============================
+    let paintFolder = gui.addFolder('Paint');
+    paintFolder.open();
 
-    gui.add({ fun: () => {
-        splatStack.push(parseInt(Math.random() * 20) + 5);
-    } }, 'fun').name('Random splats');
+    let paintControls = {
+        get wetness () {
+            return Math.max(0, Math.min(1, (1 - config.DENSITY_DISSIPATION) / 0.98));
+        },
+        set wetness (v) {
+            config.DENSITY_DISSIPATION = 1 - v * 0.98;
+        },
+    };
 
-    let bloomFolder = gui.addFolder('Bloom');
-    bloomFolder.add(config, 'BLOOM').name('enabled').onFinishChange(updateKeywords);
-    bloomFolder.add(config, 'BLOOM_INTENSITY', 0.1, 2.0).name('intensity');
-    bloomFolder.add(config, 'BLOOM_THRESHOLD', 0.0, 1.0).name('threshold');
+    paintFolder.add(paintControls, 'wetness', 0, 1).name('wetness');
+    paintFolder.add(config, 'SPLAT_RADIUS', 0.1, 1.0).name('thickness');
+    paintFolder.add(config, 'CURL', 0, 20).step(0.5).name('swirl');
+    paintFolder.add(config, 'SPLAT_FORCE', 300, 4000).name('force');
+    paintFolder.add(config, 'VELOCITY_DISSIPATION', 0.2, 4.0).name('settle speed');
+    paintFolder.add({ fun: clearCanvas }, 'fun').name('Clear canvas');
 
-    let sunraysFolder = gui.addFolder('Sunrays');
-    sunraysFolder.add(config, 'SUNRAYS').name('enabled').onFinishChange(updateKeywords);
-    sunraysFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('weight');
+    // ============================
+    // PALETTE — pick your own swirl colours
+    // ============================
+    let paletteFolder = gui.addFolder('Palette');
+    paletteFolder.add(config, 'USE_PALETTE').name('use custom colours');
+    config.PALETTE.forEach((c, i) => {
+        paletteFolder.addColor(config.PALETTE, i).name('colour ' + (i + 1));
+    });
 
     let pigmentFolder = gui.addFolder('Pigment');
     pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
@@ -257,6 +239,29 @@ function startGUI () {
     captureFolder.addColor(config, 'BACK_COLOR').name('background color');
     captureFolder.add(config, 'TRANSPARENT').name('transparent');
     captureFolder.add({ fun: captureScreenshot }, 'fun').name('take screenshot');
+
+    // ============================
+    // ADVANCED — raw simulation controls (power users)
+    // ============================
+    let advancedFolder = gui.addFolder('Advanced');
+    advancedFolder.add(config, 'DYE_RESOLUTION', { 'high': 1024, 'medium': 512, 'low': 256, 'very low': 128 }).name('quality').onFinishChange(initFramebuffers);
+    advancedFolder.add(config, 'SIM_RESOLUTION', { '32': 32, '64': 64, '128': 128, '256': 256 }).name('sim resolution').onFinishChange(initFramebuffers);
+    advancedFolder.add(config, 'PRESSURE', 0.0, 1.0).name('pressure');
+    advancedFolder.add(config, 'SHADING').name('shading').onFinishChange(updateKeywords);
+    advancedFolder.add(config, 'COLORFUL').name('colorful');
+    advancedFolder.add(config, 'PAUSED').name('paused').listen();
+    advancedFolder.add({ fun: () => {
+        splatStack.push(parseInt(Math.random() * 20) + 5);
+    } }, 'fun').name('Random splats');
+
+    let bloomFolder = advancedFolder.addFolder('Bloom');
+    bloomFolder.add(config, 'BLOOM').name('enabled').onFinishChange(updateKeywords);
+    bloomFolder.add(config, 'BLOOM_INTENSITY', 0.1, 2.0).name('intensity');
+    bloomFolder.add(config, 'BLOOM_THRESHOLD', 0.0, 1.0).name('threshold');
+
+    let sunraysFolder = advancedFolder.addFolder('Sunrays');
+    sunraysFolder.add(config, 'SUNRAYS').name('enabled').onFinishChange(updateKeywords);
+    sunraysFolder.add(config, 'SUNRAYS_WEIGHT', 0.3, 1.0).name('weight');
 
     // ============================
     // PRESETS (placed last so the folder sits at the bottom)
@@ -312,6 +317,7 @@ function startGUI () {
             POSTERIZE: config.POSTERIZE,
             POSTERIZE_LEVELS: config.POSTERIZE_LEVELS,
             EDGE_STRENGTH: config.EDGE_STRENGTH,
+            USE_PALETTE: config.USE_PALETTE,
         };
     }
 
@@ -334,15 +340,17 @@ function startGUI () {
             DENSITY_DISSIPATION: 0.3, VELOCITY_DISSIPATION: 2,
             COLOR_SATURATION: 0.45, COLOR_VALUE: 0.9, COLOR_MULTIPLIER: 0.15,
             POSTERIZE: false, POSTERIZE_LEVELS: 5, EDGE_STRENGTH: 0.45,
+            USE_PALETTE: false,
         }},
         { name: 'Paper Watercolour', config: {
             BACK_COLOR: { r: 238, g: 232, b: 220 },
             BLOOM: false, BLOOM_INTENSITY: 0.15, BLOOM_THRESHOLD: 0.5,
             SUNRAYS: false, SUNRAYS_WEIGHT: 1.0,
-            CURL: 4, SPLAT_RADIUS: 0.4, SPLAT_FORCE: 1200,
+            CURL: 1.5, SPLAT_RADIUS: 0.4, SPLAT_FORCE: 1200,
             DENSITY_DISSIPATION: 0.2, VELOCITY_DISSIPATION: 2.5,
             COLOR_SATURATION: 0.55, COLOR_VALUE: 0.65, COLOR_MULTIPLIER: 0.35,
             POSTERIZE: true, POSTERIZE_LEVELS: 5, EDGE_STRENGTH: 0.45,
+            USE_PALETTE: false,
         }},
     ];
 
@@ -1069,6 +1077,26 @@ const gradienSubtractProgram = new Program(baseVertexShader, gradientSubtractSha
 
 const displayMaterial = new Material(baseVertexShader, displayShaderSource);
 
+function clearCanvas () {
+    gl.clearColor(0, 0, 0, 0);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dye.read.fbo);
+    gl.viewport(0, 0, dye.read.width, dye.read.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dye.write.fbo);
+    gl.viewport(0, 0, dye.write.width, dye.write.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.read.fbo);
+    gl.viewport(0, 0, velocity.read.width, velocity.read.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.write.fbo);
+    gl.viewport(0, 0, velocity.write.width, velocity.write.height);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+}
+
 function initFramebuffers () {
     let simRes = getResolution(config.SIM_RESOLUTION);
     let dyeRes = getResolution(config.DYE_RESOLUTION);
@@ -1658,7 +1686,20 @@ function correctDeltaY (delta) {
     return delta;
 }
 
+function hexToRGB01 (hex) {
+    hex = hex.replace('#', '');
+    return {
+        r: parseInt(hex.substring(0, 2), 16) / 255,
+        g: parseInt(hex.substring(2, 4), 16) / 255,
+        b: parseInt(hex.substring(4, 6), 16) / 255,
+    };
+}
+
 function generateColor () {
+    if (config.USE_PALETTE && config.PALETTE.length > 0) {
+        let hex = config.PALETTE[Math.floor(Math.random() * config.PALETTE.length)];
+        return hexToRGB01(hex);
+    }
     let c = HSVtoRGB(Math.random(), config.COLOR_SATURATION, config.COLOR_VALUE);
     c.r *= config.COLOR_MULTIPLIER;
     c.g *= config.COLOR_MULTIPLIER;
@@ -1741,7 +1782,7 @@ function hashCode (s) {
     return hash;
 };
 // ============================
-// WHIMSICAL UI STYLING + CONTROLS TOGGLE (gear icon)
+// SLEEK MINIMAL UI + CONTROLS TOGGLE (gear icon)
 // ============================
 window.addEventListener('load', () => {
     const fontLink = document.createElement('link');
@@ -1751,97 +1792,101 @@ window.addEventListener('load', () => {
 
     const style = document.createElement('style');
     style.innerHTML = `
+        .dg, .dg * {
+            text-shadow: none !important;
+        }
         .dg.main {
             font-family: 'Space Mono', monospace !important;
-            background: #fdfaf3 !important;
-            border: 2px solid #2e2a26 !important;
-            border-radius: 22px 8px 22px 8px !important;
+            background: rgba(16, 18, 22, 0.55) !important;
+            backdrop-filter: blur(16px) saturate(160%);
+            -webkit-backdrop-filter: blur(16px) saturate(160%);
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 10px !important;
             overflow: hidden;
-            box-shadow: 6px 6px 0px rgba(46, 42, 38, 0.12);
-            padding: 6px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+            padding: 4px;
         }
         .dg.main .close-button { display: none !important; }
         .dg .property-name {
-            color: #5a5048 !important;
+            color: rgba(235, 235, 240, 0.75) !important;
             font-size: 11px;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.03em;
         }
         .dg li:not(.folder) {
             background: transparent !important;
-            border-bottom: 1px dashed rgba(46, 42, 38, 0.15) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
         }
-        .dg li.folder {
-            border: none !important;
-        }
+        .dg li.folder { border: none !important; }
         .dg .title {
-            background: #ffe8d6 !important;
-            color: #3a342e !important;
-            border-radius: 14px 4px 14px 4px !important;
+            background: rgba(255, 255, 255, 0.03) !important;
+            color: rgba(235, 235, 240, 0.9) !important;
+            border-radius: 6px !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
             font-weight: 700;
-            font-size: 12px;
-            margin: 3px 2px;
-            border: 1.5px solid #2e2a26 !important;
+            font-size: 11px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin: 2px 0;
         }
         .dg .title:hover {
-            background: #ffd6ba !important;
-        }
-        .dg .closed .title {
-            border-radius: 14px 4px 14px 4px !important;
+            background: rgba(255, 255, 255, 0.06) !important;
         }
         .dg .cr.function {
-            background: #d9f2e6 !important;
-            border-radius: 16px 5px 16px 5px !important;
-            margin: 4px;
-            border: 1.5px solid #2e2a26 !important;
-            transition: transform 0.1s ease;
+            background: transparent !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            border-radius: 6px !important;
+            margin: 3px 4px;
+            transition: background 0.15s ease, border-color 0.15s ease;
         }
         .dg .cr.function:hover {
-            background: #bdeed5 !important;
-            transform: translate(-1px, -1px);
+            background: rgba(125, 224, 214, 0.08) !important;
+            border-color: rgba(125, 224, 214, 0.4) !important;
         }
         .dg .cr.function .property-name {
-            color: #2e2a26 !important;
+            color: rgba(125, 224, 214, 0.9) !important;
             text-align: center;
             width: 100%;
             font-weight: 700;
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
         }
         .dg .cr.boolean { border: none !important; }
         .dg .c input[type=text] {
-            background: #f3ece0 !important;
-            color: #3a342e !important;
-            border-radius: 8px !important;
-            border: 1.5px solid rgba(46,42,38,0.2) !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: rgba(235, 235, 240, 0.85) !important;
+            border-radius: 4px !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
             box-shadow: none !important;
             font-family: 'Space Mono', monospace !important;
         }
         .dg .slider {
-            background: #f3ece0 !important;
-            border-radius: 8px !important;
-            border: 1.5px solid rgba(46,42,38,0.15) !important;
+            background: rgba(255, 255, 255, 0.06) !important;
+            border-radius: 4px !important;
+            border: none !important;
         }
         .dg .slider-fg {
-            background: #ffb38a !important;
-            border-radius: 8px !important;
+            background: rgba(125, 224, 214, 0.55) !important;
+            border-radius: 4px !important;
         }
         .dg select {
-            background: #f3ece0 !important;
-            color: #3a342e !important;
-            border: 1.5px solid rgba(46,42,38,0.2) !important;
-            border-radius: 8px !important;
+            background: rgba(255, 255, 255, 0.05) !important;
+            color: rgba(235, 235, 240, 0.85) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 4px !important;
             font-family: 'Space Mono', monospace !important;
         }
         .preset-delete {
             position: absolute;
-            right: 10px;
+            right: 8px;
             top: 50%;
             transform: translateY(-50%);
-            opacity: 0.4;
-            font-size: 12px;
+            opacity: 0.35;
+            font-size: 11px;
             cursor: pointer;
-            color: #2e2a26;
-            font-weight: 700;
+            color: rgba(235, 235, 240, 0.7);
         }
-        .preset-delete:hover { opacity: 1; }
+        .preset-delete:hover { opacity: 1; color: #ff8a8a; }
     `;
     document.head.appendChild(style);
 
@@ -1850,28 +1895,32 @@ window.addEventListener('load', () => {
     gearBtn.style.position = 'fixed';
     gearBtn.style.top = '14px';
     gearBtn.style.right = '14px';
-    gearBtn.style.width = '42px';
-    gearBtn.style.height = '42px';
+    gearBtn.style.width = '38px';
+    gearBtn.style.height = '38px';
     gearBtn.style.display = 'flex';
     gearBtn.style.alignItems = 'center';
     gearBtn.style.justifyContent = 'center';
-    gearBtn.style.fontSize = '20px';
+    gearBtn.style.fontSize = '18px';
     gearBtn.style.fontFamily = "'Space Mono', monospace";
-    gearBtn.style.color = '#3a342e';
-    gearBtn.style.background = '#ffe8d6';
-    gearBtn.style.border = '2px solid #2e2a26';
-    gearBtn.style.borderRadius = '50% 40% 50% 40%';
+    gearBtn.style.color = 'rgba(125, 224, 214, 0.9)';
+    gearBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    gearBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    gearBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    gearBtn.style.borderRadius = '50%';
     gearBtn.style.cursor = 'pointer';
     gearBtn.style.zIndex = '50';
     gearBtn.style.userSelect = 'none';
-    gearBtn.style.boxShadow = '3px 3px 0px rgba(46,42,38,0.15)';
+    gearBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    gearBtn.style.transition = 'transform 0.4s ease, border-color 0.2s ease';
     gearBtn.title = 'Settings';
 
     gearBtn.addEventListener('mouseenter', () => {
-        gearBtn.style.transform = 'rotate(20deg)';
+        gearBtn.style.transform = 'rotate(60deg)';
+        gearBtn.style.borderColor = 'rgba(125, 224, 214, 0.5)';
     });
     gearBtn.addEventListener('mouseleave', () => {
         gearBtn.style.transform = 'rotate(0deg)';
+        gearBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
     });
 
     gearBtn.addEventListener('click', () => {
@@ -1916,7 +1965,8 @@ window.addEventListener('load', () => {
 
 // ============================
 // KEYBOARD SHORTCUTS
-// B = black bg, W = white bg, P = paper (default), S = save / export painting
+// B = black bg, W = white bg, P = paper (default)
+// S = save / export painting, C = clear canvas
 // ============================
 window.addEventListener('keydown', e => {
     if (e.key === 'b' || e.key === 'B') {
@@ -1931,20 +1981,59 @@ window.addEventListener('keydown', e => {
     if (e.key === 's' || e.key === 'S') {
         captureScreenshot();
     }
+    if (e.key === 'c' || e.key === 'C') {
+        clearCanvas();
+    }
 });
 
 // ============================
-// AUDIO → FLUID (mic listener)
+// "TAP TO BEGIN" OVERLAY + AUDIO → FLUID (mic listener)
+// A user gesture is required for mic + audio on most mobile
+// browsers, so we gate everything behind one tap.
 // ============================
 window.addEventListener('load', () => {
-    setTimeout(() => {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.background = 'rgba(16, 18, 22, 0.55)';
+    overlay.style.backdropFilter = 'blur(10px)';
+    overlay.style.zIndex = '60';
+    overlay.style.cursor = 'pointer';
+    overlay.style.fontFamily = "'Space Mono', monospace";
+    overlay.style.color = 'rgba(235, 235, 240, 0.92)';
+    overlay.style.textAlign = 'center';
+    overlay.style.transition = 'opacity 0.5s ease';
+
+    overlay.innerHTML = `
+        <div style="border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:28px 36px; background:rgba(255,255,255,0.04);">
+            <div style="font-size:14px; letter-spacing:0.08em; margin-bottom:8px;">TAP TO BEGIN</div>
+            <div style="font-size:11px; opacity:0.6;">allow microphone access, then play something</div>
+        </div>`;
+
+    document.body.appendChild(overlay);
+
+    let lastSoundTime = performance.now();
+    let nextIdleGap = 12000 + Math.random() * 8000;
+
+    overlay.addEventListener('click', () => {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 500);
+
         const MIC_SENSITIVITY = 0.18;
         const SPLAT_COOLDOWN  = 180;
         let lastFire = 0;
 
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
-                const ctx      = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                if (ctx.state === 'suspended') ctx.resume();
+
                 const analyser = ctx.createAnalyser();
                 analyser.fftSize = 256;
                 ctx.createMediaStreamSource(stream).connect(analyser);
@@ -1959,6 +2048,7 @@ window.addEventListener('load', () => {
                     const now = performance.now();
                     if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
                         lastFire = now;
+                        lastSoundTime = now;
                         splatStack.push(1);
                     }
                 }
@@ -1966,5 +2056,15 @@ window.addEventListener('load', () => {
                 console.log('🎸 mic active — play something!');
             })
             .catch(e => console.warn('mic blocked:', e));
-    }, 1500);
+
+        // gentle ambient drift while waiting for music
+        setInterval(() => {
+            const now = performance.now();
+            if (now - lastSoundTime > nextIdleGap) {
+                lastSoundTime = now;
+                nextIdleGap = 12000 + Math.random() * 8000;
+                splatStack.push(1);
+            }
+        }, 4000);
+    });
 });
