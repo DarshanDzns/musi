@@ -62,7 +62,7 @@ let config = {
     POSTERIZE_LEVELS: 5,
     EDGE_STRENGTH: 0.45,
     USE_PALETTE: false,
-    PALETTE: ['#8ecae6', '#ffb4a2', '#b9fbc0', '#ffd6a5', '#cdb4db'],
+    PALETTE: ['#8ecae6', '#ffb4a2'],
 }
 
 function pointerPrototype () {
@@ -214,16 +214,6 @@ function startGUI () {
     paintFolder.add(config, 'CURL', 0, 20).step(0.5).name('swirl');
     paintFolder.add(config, 'SPLAT_FORCE', 300, 4000).name('force');
     paintFolder.add(config, 'VELOCITY_DISSIPATION', 0.2, 4.0).name('settle speed');
-    paintFolder.add({ fun: clearCanvas }, 'fun').name('Clear canvas');
-
-    // ============================
-    // PALETTE — pick your own swirl colours
-    // ============================
-    let paletteFolder = gui.addFolder('Palette');
-    paletteFolder.add(config, 'USE_PALETTE').name('use custom colours');
-    config.PALETTE.forEach((c, i) => {
-        paletteFolder.addColor(config.PALETTE, i).name('colour ' + (i + 1));
-    });
 
     let pigmentFolder = gui.addFolder('Pigment');
     pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
@@ -2067,4 +2057,222 @@ window.addEventListener('load', () => {
             }
         }, 4000);
     });
+});
+
+// ============================
+// STANDALONE CLEAR CANVAS BUTTON
+// ============================
+window.addEventListener('load', () => {
+    const clearBtn = document.createElement('div');
+    clearBtn.innerHTML = '✕';
+    clearBtn.style.position = 'fixed';
+    clearBtn.style.bottom = '14px';
+    clearBtn.style.right = '14px';
+    clearBtn.style.width = '38px';
+    clearBtn.style.height = '38px';
+    clearBtn.style.display = 'flex';
+    clearBtn.style.alignItems = 'center';
+    clearBtn.style.justifyContent = 'center';
+    clearBtn.style.fontSize = '15px';
+    clearBtn.style.fontFamily = "'Space Mono', monospace";
+    clearBtn.style.color = 'rgba(255, 138, 138, 0.9)';
+    clearBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    clearBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    clearBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    clearBtn.style.borderRadius = '50%';
+    clearBtn.style.cursor = 'pointer';
+    clearBtn.style.zIndex = '50';
+    clearBtn.style.userSelect = 'none';
+    clearBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    clearBtn.style.transition = 'border-color 0.2s ease, transform 0.15s ease';
+    clearBtn.title = 'Clear canvas (C)';
+
+    clearBtn.addEventListener('mouseenter', () => {
+        clearBtn.style.borderColor = 'rgba(255, 138, 138, 0.5)';
+        clearBtn.style.transform = 'scale(1.08)';
+    });
+    clearBtn.addEventListener('mouseleave', () => {
+        clearBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        clearBtn.style.transform = 'scale(1)';
+    });
+    clearBtn.addEventListener('click', clearCanvas);
+
+    document.body.appendChild(clearBtn);
+});
+
+// ============================
+// CUSTOM PALETTE WIDGET (2–8 colours, add/remove)
+// ============================
+window.addEventListener('load', () => {
+    // restore saved palette
+    try {
+        const saved = JSON.parse(localStorage.getItem('fluidPalette') || 'null');
+        if (saved && Array.isArray(saved.colors) && saved.colors.length >= 2) {
+            config.PALETTE = saved.colors;
+            config.USE_PALETTE = !!saved.use;
+        }
+    } catch (e) {}
+
+    function savePalette () {
+        localStorage.setItem('fluidPalette', JSON.stringify({ use: config.USE_PALETTE, colors: config.PALETTE }));
+    }
+
+    // toggle button
+    const paletteBtn = document.createElement('div');
+    paletteBtn.innerHTML = '🎨';
+    paletteBtn.style.position = 'fixed';
+    paletteBtn.style.top = '14px';
+    paletteBtn.style.right = '60px';
+    paletteBtn.style.width = '38px';
+    paletteBtn.style.height = '38px';
+    paletteBtn.style.display = 'flex';
+    paletteBtn.style.alignItems = 'center';
+    paletteBtn.style.justifyContent = 'center';
+    paletteBtn.style.fontSize = '16px';
+    paletteBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    paletteBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    paletteBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    paletteBtn.style.borderRadius = '50%';
+    paletteBtn.style.cursor = 'pointer';
+    paletteBtn.style.zIndex = '50';
+    paletteBtn.style.userSelect = 'none';
+    paletteBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    paletteBtn.style.transition = 'border-color 0.2s ease';
+    paletteBtn.title = 'Colour palette';
+
+    paletteBtn.addEventListener('mouseenter', () => {
+        paletteBtn.style.borderColor = 'rgba(125, 224, 214, 0.5)';
+    });
+    paletteBtn.addEventListener('mouseleave', () => {
+        paletteBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+    });
+
+    // panel
+    const panel = document.createElement('div');
+    panel.style.position = 'fixed';
+    panel.style.top = '58px';
+    panel.style.right = '14px';
+    panel.style.width = '200px';
+    panel.style.display = 'none';
+    panel.style.flexDirection = 'column';
+    panel.style.gap = '6px';
+    panel.style.padding = '12px';
+    panel.style.background = 'rgba(16, 18, 22, 0.55)';
+    panel.style.backdropFilter = 'blur(16px) saturate(160%)';
+    panel.style.border = '1px solid rgba(255, 255, 255, 0.08)';
+    panel.style.borderRadius = '10px';
+    panel.style.boxShadow = '0 8px 32px rgba(0,0,0,0.25)';
+    panel.style.zIndex = '50';
+    panel.style.fontFamily = "'Space Mono', monospace";
+    panel.style.color = 'rgba(235, 235, 240, 0.85)';
+    panel.style.fontSize = '11px';
+
+    function makeRow (color, index) {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '8px';
+
+        const swatch = document.createElement('input');
+        swatch.type = 'color';
+        swatch.value = color;
+        swatch.style.width = '32px';
+        swatch.style.height = '24px';
+        swatch.style.border = '1px solid rgba(255,255,255,0.15)';
+        swatch.style.borderRadius = '4px';
+        swatch.style.background = 'transparent';
+        swatch.style.cursor = 'pointer';
+        swatch.addEventListener('input', () => {
+            config.PALETTE[index] = swatch.value;
+            savePalette();
+        });
+
+        const label = document.createElement('div');
+        label.textContent = 'colour ' + (index + 1);
+        label.style.flex = '1';
+        label.style.opacity = '0.7';
+
+        row.appendChild(swatch);
+        row.appendChild(label);
+
+        if (config.PALETTE.length > 2) {
+            const removeBtn = document.createElement('div');
+            removeBtn.textContent = '✕';
+            removeBtn.style.cursor = 'pointer';
+            removeBtn.style.opacity = '0.4';
+            removeBtn.style.fontSize = '11px';
+            removeBtn.addEventListener('mouseenter', () => removeBtn.style.opacity = '1');
+            removeBtn.addEventListener('mouseleave', () => removeBtn.style.opacity = '0.4');
+            removeBtn.addEventListener('click', () => {
+                config.PALETTE.splice(index, 1);
+                savePalette();
+                renderPalette();
+            });
+            row.appendChild(removeBtn);
+        }
+
+        return row;
+    }
+
+    function renderPalette () {
+        panel.innerHTML = '';
+
+        const toggleRow = document.createElement('label');
+        toggleRow.style.display = 'flex';
+        toggleRow.style.alignItems = 'center';
+        toggleRow.style.gap = '8px';
+        toggleRow.style.marginBottom = '4px';
+        toggleRow.style.cursor = 'pointer';
+        toggleRow.style.fontWeight = '700';
+        toggleRow.style.letterSpacing = '0.05em';
+        toggleRow.style.textTransform = 'uppercase';
+        toggleRow.style.fontSize = '10px';
+
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.checked = config.USE_PALETTE;
+        toggle.addEventListener('change', () => {
+            config.USE_PALETTE = toggle.checked;
+            savePalette();
+        });
+
+        toggleRow.appendChild(toggle);
+        toggleRow.appendChild(document.createTextNode('use custom colours'));
+        panel.appendChild(toggleRow);
+
+        config.PALETTE.forEach((c, i) => panel.appendChild(makeRow(c, i)));
+
+        if (config.PALETTE.length < 8) {
+            const addBtn = document.createElement('div');
+            addBtn.textContent = '+ add colour';
+            addBtn.style.marginTop = '4px';
+            addBtn.style.padding = '6px';
+            addBtn.style.textAlign = 'center';
+            addBtn.style.border = '1px solid rgba(255,255,255,0.1)';
+            addBtn.style.borderRadius = '6px';
+            addBtn.style.cursor = 'pointer';
+            addBtn.style.color = 'rgba(125, 224, 214, 0.9)';
+            addBtn.style.fontSize = '10px';
+            addBtn.style.letterSpacing = '0.05em';
+            addBtn.style.textTransform = 'uppercase';
+            addBtn.addEventListener('mouseenter', () => addBtn.style.background = 'rgba(125, 224, 214, 0.08)');
+            addBtn.addEventListener('mouseleave', () => addBtn.style.background = 'transparent');
+            addBtn.addEventListener('click', () => {
+                const randomHex = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+                config.PALETTE.push(randomHex);
+                savePalette();
+                renderPalette();
+            });
+            panel.appendChild(addBtn);
+        }
+    }
+
+    renderPalette();
+
+    paletteBtn.addEventListener('click', () => {
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    });
+
+    document.body.appendChild(paletteBtn);
+    document.body.appendChild(panel);
 });
