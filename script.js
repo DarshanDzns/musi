@@ -1977,11 +1977,35 @@ window.addEventListener('keydown', e => {
 });
 
 // ============================
-// "TAP TO BEGIN" OVERLAY + AUDIO → FLUID (mic listener)
-// A user gesture is required for mic + audio on most mobile
-// browsers, so we gate everything behind one tap.
+// WELCOME SCREEN + AUDIO + PITCH-AWARE COLOR + FULLSCREEN + SHARE
 // ============================
 window.addEventListener('load', () => {
+
+    // ── floating notes animation on welcome screen ──────────────────
+    const noteChars = ['♩','♪','♫','♬','𝄞'];
+    function spawnNote (container) {
+        const n = document.createElement('div');
+        n.textContent = noteChars[Math.floor(Math.random() * noteChars.length)];
+        n.style.position = 'absolute';
+        n.style.left = (10 + Math.random() * 80) + '%';
+        n.style.bottom = '-30px';
+        n.style.fontSize = (12 + Math.random() * 14) + 'px';
+        n.style.opacity = '0';
+        n.style.color = 'rgba(125, 224, 214, 0.7)';
+        n.style.pointerEvents = 'none';
+        n.style.transition = 'bottom 3.5s ease-out, opacity 3.5s ease';
+        container.appendChild(n);
+        requestAnimationFrame(() => {
+            n.style.bottom = (50 + Math.random() * 40) + '%';
+            n.style.opacity = '1';
+        });
+        setTimeout(() => {
+            n.style.opacity = '0';
+            setTimeout(() => n.remove(), 800);
+        }, 2800);
+    }
+
+    // ── overlay ──────────────────────────────────────────────────────
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
     overlay.style.top = '0';
@@ -1991,29 +2015,70 @@ window.addEventListener('load', () => {
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
-    overlay.style.background = 'rgba(16, 18, 22, 0.55)';
-    overlay.style.backdropFilter = 'blur(10px)';
+    overlay.style.background = 'rgba(10, 12, 16, 0.82)';
+    overlay.style.backdropFilter = 'blur(14px)';
     overlay.style.zIndex = '60';
     overlay.style.cursor = 'pointer';
     overlay.style.fontFamily = "'Space Mono', monospace";
     overlay.style.color = 'rgba(235, 235, 240, 0.92)';
     overlay.style.textAlign = 'center';
-    overlay.style.transition = 'opacity 0.5s ease';
+    overlay.style.transition = 'opacity 0.6s ease';
+    overlay.style.overflow = 'hidden';
 
     overlay.innerHTML = `
-        <div style="border:1px solid rgba(255,255,255,0.15); border-radius:10px; padding:28px 36px; background:rgba(255,255,255,0.04);">
-            <div style="font-size:14px; letter-spacing:0.08em; margin-bottom:8px;">TAP TO BEGIN</div>
-            <div style="font-size:11px; opacity:0.6;">allow microphone access, then play something</div>
+        <div id="wc-card" style="
+            border:1px solid rgba(255,255,255,0.12);
+            border-radius:14px;
+            padding:36px 44px;
+            background:rgba(255,255,255,0.03);
+            max-width:340px;
+            position:relative;
+        ">
+            <div style="font-size:28px; margin-bottom:10px;">𝄞</div>
+            <div style="font-size:22px; font-weight:700; letter-spacing:0.04em; margin-bottom:6px; color:#fff;">
+                soundpainter
+            </div>
+            <div style="font-size:11px; opacity:0.5; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:24px;">
+                your music becomes art
+            </div>
+            <div id="wc-btn" style="
+                display:inline-block;
+                padding:10px 24px;
+                border:1px solid rgba(125, 224, 214, 0.5);
+                border-radius:6px;
+                font-size:11px;
+                letter-spacing:0.1em;
+                text-transform:uppercase;
+                color:rgba(125, 224, 214, 0.9);
+                transition: background 0.2s ease;
+                cursor:pointer;
+            ">tap &amp; play</div>
+            <div style="font-size:10px; opacity:0.35; margin-top:14px; letter-spacing:0.06em;">
+                allow mic access when prompted
+            </div>
         </div>`;
 
     document.body.appendChild(overlay);
 
+    // floating notes loop
+    const noteInterval = setInterval(() => spawnNote(overlay), 1000);
+
+    // hover effect on btn
+    const wcBtn = overlay.querySelector('#wc-btn');
+    wcBtn.addEventListener('mouseenter', () => wcBtn.style.background = 'rgba(125, 224, 214, 0.08)');
+    wcBtn.addEventListener('mouseleave', () => wcBtn.style.background = 'transparent');
+
+    // ── start everything on click ─────────────────────────────────────
     let lastSoundTime = performance.now();
     let nextIdleGap = 12000 + Math.random() * 8000;
 
+    // pitch-aware mode flag
+    window.__pitchAware = false;
+
     overlay.addEventListener('click', () => {
+        clearInterval(noteInterval);
         overlay.style.opacity = '0';
-        setTimeout(() => overlay.remove(), 500);
+        setTimeout(() => overlay.remove(), 600);
 
         const MIC_SENSITIVITY = 0.18;
         const SPLAT_COOLDOWN  = 180;
@@ -2024,30 +2089,83 @@ window.addEventListener('load', () => {
                 const ctx = new (window.AudioContext || window.webkitAudioContext)();
                 if (ctx.state === 'suspended') ctx.resume();
 
+                // large fftSize for pitch detection
                 const analyser = ctx.createAnalyser();
-                analyser.fftSize = 256;
+                analyser.fftSize = 2048;
                 ctx.createMediaStreamSource(stream).connect(analyser);
-                const data = new Uint8Array(analyser.frequencyBinCount);
+                const freqData = new Uint8Array(analyser.frequencyBinCount);
+                const timeData = new Float32Array(analyser.fftSize);
+
+                // autocorrelation pitch detection
+                function detectPitch () {
+                    analyser.getFloatTimeDomainData(timeData);
+                    const SIZE = timeData.length;
+                    let r = new Array(SIZE).fill(0);
+                    for (let lag = 0; lag < SIZE; lag++) {
+                        for (let i = 0; i < SIZE - lag; i++) {
+                            r[lag] += timeData[i] * timeData[i + lag];
+                        }
+                    }
+                    let firstNeg = 0;
+                    while (firstNeg < SIZE - 1 && r[firstNeg] > 0) firstNeg++;
+                    let peak = firstNeg, maxVal = -Infinity;
+                    for (let i = firstNeg; i < SIZE; i++) {
+                        if (r[i] > maxVal) { maxVal = r[i]; peak = i; }
+                    }
+                    const freq = ctx.sampleRate / peak;
+                    return (freq > 60 && freq < 1200) ? freq : null;
+                }
+
+                // pitch → color  (low=warm/red, mid=violet, high=cyan/blue)
+                function pitchToColor (freq) {
+                    if (!freq) return null;
+                    const lo = 80, hi = 1000;
+                    const t = Math.max(0, Math.min(1, (Math.log(freq) - Math.log(lo)) / (Math.log(hi) - Math.log(lo))));
+                    // hue: 0=red (low), 270=violet (mid), 180=cyan (high)
+                    const hue = (1 - t) * 10 + t * 200;
+                    const c = HSVtoRGB(hue / 360, 0.65, 0.85);
+                    c.r *= 0.35;
+                    c.g *= 0.35;
+                    c.b *= 0.35;
+                    return c;
+                }
 
                 function loop() {
                     requestAnimationFrame(loop);
-                    analyser.getByteFrequencyData(data);
+                    analyser.getByteFrequencyData(freqData);
                     let sum = 0;
-                    for (let i = 0; i < data.length; i++) sum += data[i];
-                    const volume = sum / data.length / 255;
+                    for (let i = 0; i < freqData.length; i++) sum += freqData[i];
+                    const volume = sum / freqData.length / 255;
                     const now = performance.now();
                     if (volume > MIC_SENSITIVITY && now - lastFire > SPLAT_COOLDOWN) {
                         lastFire = now;
                         lastSoundTime = now;
-                        splatStack.push(1);
+
+                        if (window.__pitchAware) {
+                            const freq = detectPitch();
+                            const col = pitchToColor(freq);
+                            if (col) {
+                                // direct splat with pitch color at random canvas position
+                                const x = 0.15 + Math.random() * 0.7;
+                                const y = 0.15 + Math.random() * 0.7;
+                                const angle = Math.random() * Math.PI * 2;
+                                const force = config.SPLAT_FORCE * (volume * 4 + 0.5);
+                                splat(x * canvas.width, y * canvas.height,
+                                      Math.cos(angle) * force, Math.sin(angle) * force, col);
+                            } else {
+                                splatStack.push(1);
+                            }
+                        } else {
+                            splatStack.push(1);
+                        }
                     }
                 }
                 loop();
-                console.log('🎸 mic active — play something!');
+                console.log('🎸 mic + pitch detection active');
             })
             .catch(e => console.warn('mic blocked:', e));
 
-        // gentle ambient drift while waiting for music
+        // idle drift
         setInterval(() => {
             const now = performance.now();
             if (now - lastSoundTime > nextIdleGap) {
@@ -2275,4 +2393,152 @@ window.addEventListener('load', () => {
 
     document.body.appendChild(paletteBtn);
     document.body.appendChild(panel);
+});
+
+// ============================
+// PITCH-AWARE COLOR TOGGLE (★ button)
+// ============================
+window.addEventListener('load', () => {
+    const pitchBtn = document.createElement('div');
+    pitchBtn.innerHTML = '★';
+    pitchBtn.style.position = 'fixed';
+    pitchBtn.style.top = '60px';
+    pitchBtn.style.right = '14px';
+    pitchBtn.style.width = '38px';
+    pitchBtn.style.height = '38px';
+    pitchBtn.style.display = 'flex';
+    pitchBtn.style.alignItems = 'center';
+    pitchBtn.style.justifyContent = 'center';
+    pitchBtn.style.fontSize = '16px';
+    pitchBtn.style.fontFamily = "'Space Mono', monospace";
+    pitchBtn.style.color = 'rgba(235, 235, 240, 0.5)';
+    pitchBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    pitchBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    pitchBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    pitchBtn.style.borderRadius = '50%';
+    pitchBtn.style.cursor = 'pointer';
+    pitchBtn.style.zIndex = '50';
+    pitchBtn.style.userSelect = 'none';
+    pitchBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    pitchBtn.style.transition = 'color 0.2s ease, border-color 0.2s ease';
+    pitchBtn.title = 'Pitch color mode (off)';
+
+    pitchBtn.addEventListener('click', () => {
+        window.__pitchAware = !window.__pitchAware;
+        if (window.__pitchAware) {
+            pitchBtn.style.color = 'rgba(255, 214, 100, 0.9)';
+            pitchBtn.style.borderColor = 'rgba(255, 214, 100, 0.45)';
+            pitchBtn.title = 'Pitch color mode (on) — low note = warm, high note = cool';
+        } else {
+            pitchBtn.style.color = 'rgba(235, 235, 240, 0.5)';
+            pitchBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            pitchBtn.title = 'Pitch color mode (off)';
+        }
+    });
+
+    document.body.appendChild(pitchBtn);
+});
+
+// ============================
+// FULLSCREEN TOGGLE
+// ============================
+window.addEventListener('load', () => {
+    const fsBtn = document.createElement('div');
+    fsBtn.innerHTML = '⛶';
+    fsBtn.style.position = 'fixed';
+    fsBtn.style.bottom = '60px';
+    fsBtn.style.right = '14px';
+    fsBtn.style.width = '38px';
+    fsBtn.style.height = '38px';
+    fsBtn.style.display = 'flex';
+    fsBtn.style.alignItems = 'center';
+    fsBtn.style.justifyContent = 'center';
+    fsBtn.style.fontSize = '18px';
+    fsBtn.style.fontFamily = "'Space Mono', monospace";
+    fsBtn.style.color = 'rgba(235, 235, 240, 0.6)';
+    fsBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    fsBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    fsBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    fsBtn.style.borderRadius = '50%';
+    fsBtn.style.cursor = 'pointer';
+    fsBtn.style.zIndex = '50';
+    fsBtn.style.userSelect = 'none';
+    fsBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    fsBtn.style.transition = 'border-color 0.2s ease';
+    fsBtn.title = 'Fullscreen';
+
+    fsBtn.addEventListener('mouseenter', () => {
+        fsBtn.style.borderColor = 'rgba(125, 224, 214, 0.45)';
+    });
+    fsBtn.addEventListener('mouseleave', () => {
+        fsBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+    });
+
+    fsBtn.addEventListener('click', () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
+        }
+    });
+
+    document.fullscreenchange && document.addEventListener('fullscreenchange', () => {
+        fsBtn.innerHTML = document.fullscreenElement ? '✕' : '⛶';
+        fsBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+    });
+
+    document.body.appendChild(fsBtn);
+});
+
+// ============================
+// SHARE / SAVE BUTTON
+// ============================
+window.addEventListener('load', () => {
+    const shareBtn = document.createElement('div');
+    shareBtn.innerHTML = '↓';
+    shareBtn.style.position = 'fixed';
+    shareBtn.style.bottom = '106px';
+    shareBtn.style.right = '14px';
+    shareBtn.style.width = '38px';
+    shareBtn.style.height = '38px';
+    shareBtn.style.display = 'flex';
+    shareBtn.style.alignItems = 'center';
+    shareBtn.style.justifyContent = 'center';
+    shareBtn.style.fontSize = '18px';
+    shareBtn.style.fontWeight = '700';
+    shareBtn.style.fontFamily = "'Space Mono', monospace";
+    shareBtn.style.color = 'rgba(125, 224, 214, 0.9)';
+    shareBtn.style.background = 'rgba(16, 18, 22, 0.55)';
+    shareBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
+    shareBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+    shareBtn.style.borderRadius = '50%';
+    shareBtn.style.cursor = 'pointer';
+    shareBtn.style.zIndex = '50';
+    shareBtn.style.userSelect = 'none';
+    shareBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
+    shareBtn.style.transition = 'border-color 0.2s ease, transform 0.15s ease';
+    shareBtn.title = 'Save painting (S)';
+
+    shareBtn.addEventListener('mouseenter', () => {
+        shareBtn.style.borderColor = 'rgba(125, 224, 214, 0.45)';
+        shareBtn.style.transform = 'scale(1.08)';
+    });
+    shareBtn.addEventListener('mouseleave', () => {
+        shareBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        shareBtn.style.transform = 'scale(1)';
+    });
+
+    shareBtn.addEventListener('click', () => {
+        captureScreenshot();
+        // flash confirmation
+        const orig = shareBtn.innerHTML;
+        shareBtn.innerHTML = '✓';
+        shareBtn.style.color = 'rgba(100, 255, 180, 0.9)';
+        setTimeout(() => {
+            shareBtn.innerHTML = orig;
+            shareBtn.style.color = 'rgba(125, 224, 214, 0.9)';
+        }, 1200);
+    });
+
+    document.body.appendChild(shareBtn);
 });
