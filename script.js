@@ -44,7 +44,7 @@ let config = {
     COLORFUL: true,
     COLOR_UPDATE_SPEED: 3,
     PAUSED: false,
-    BACK_COLOR: { r: 238, g: 232, b: 220 },
+    BACK_COLOR: { r: 255, g: 255, b: 255 },
     TRANSPARENT: false,
     BLOOM: false,
     BLOOM_ITERATIONS: 8,
@@ -214,6 +214,7 @@ function startGUI () {
     paintFolder.add(config, 'CURL', 0, 20).step(0.5).name('swirl');
     paintFolder.add(config, 'SPLAT_FORCE', 300, 4000).name('force');
     paintFolder.add(config, 'VELOCITY_DISSIPATION', 0.2, 4.0).name('settle speed');
+    paintFolder.add({ fun: clearCanvas }, 'fun').name('Clear canvas');
 
     let pigmentFolder = gui.addFolder('Pigment');
     pigmentFolder.add(config, 'COLOR_SATURATION', 0, 1).name('saturation');
@@ -224,6 +225,17 @@ function startGUI () {
     illustrationFolder.add(config, 'POSTERIZE').name('flat colour cells').onFinishChange(updateKeywords);
     illustrationFolder.add(config, 'POSTERIZE_LEVELS', 2, 12).step(1).name('colour bands');
     illustrationFolder.add(config, 'EDGE_STRENGTH', 0, 1).name('paper edges');
+
+    let effectsFolder = gui.addFolder('Effects');
+    window.__pitchAware = false;
+    effectsFolder.add(window, '__pitchAware').name('pitch colour mode');
+    effectsFolder.add({ fun: () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(() => {});
+        } else {
+            document.exitFullscreen().catch(() => {});
+        }
+    } }, 'fun').name('toggle fullscreen');
 
     let captureFolder = gui.addFolder('Capture');
     captureFolder.addColor(config, 'BACK_COLOR').name('background color');
@@ -333,7 +345,7 @@ function startGUI () {
             USE_PALETTE: false,
         }},
         { name: 'Paper Watercolour', config: {
-            BACK_COLOR: { r: 238, g: 232, b: 220 },
+            BACK_COLOR: { r: 255, g: 255, b: 255 },
             BLOOM: false, BLOOM_INTENSITY: 0.15, BLOOM_THRESHOLD: 0.5,
             SUNRAYS: false, SUNRAYS_WEIGHT: 1.0,
             CURL: 1.5, SPLAT_RADIUS: 0.4, SPLAT_FORCE: 1200,
@@ -350,6 +362,24 @@ function startGUI () {
         localStorage.setItem('fluidPresets', JSON.stringify(savedPresets));
     }
     savedPresets.forEach(p => addPresetButton(p.name, p.config, p.name));
+
+    // ── accordion behaviour: opening one top-level folder closes the others ──
+    const topFolders = [paintFolder, pigmentFolder, illustrationFolder, effectsFolder, captureFolder, advancedFolder, presetsFolder];
+    topFolders.forEach(folder => {
+        const titleEl = folder.domElement.querySelector('.title');
+        if (!titleEl) return;
+        titleEl.addEventListener('click', () => {
+            // after dat.gui's own toggle runs, close all the others
+            setTimeout(() => {
+                const justOpened = !folder.closed;
+                if (justOpened) {
+                    topFolders.forEach(f => {
+                        if (f !== folder && !f.closed) f.close();
+                    });
+                }
+            }, 0);
+        });
+    });
 
     gui.domElement.style.display = 'none';
     window.__fluidGUI = gui;
@@ -690,8 +720,8 @@ const displayShaderSource = `
         c = floor(c * uPosterizeLevels + 0.5) / uPosterizeLevels;
 
         float edge = length(rc - lc) + length(tc - bc);
-        edge = smoothstep(0.02, 0.18, edge);
-        c = mix(c, uBackColor, edge * uEdgeStrength);
+        edge = smoothstep(0.25, 0.6, edge);
+        c = mix(c, uBackColor, edge * uEdgeStrength * 0.6);
     #endif
 
         float a = max(c.r, max(c.g, c.b));
@@ -2072,9 +2102,6 @@ window.addEventListener('load', () => {
     let lastSoundTime = performance.now();
     let nextIdleGap = 12000 + Math.random() * 8000;
 
-    // pitch-aware mode flag
-    window.__pitchAware = false;
-
     overlay.addEventListener('click', () => {
         clearInterval(noteInterval);
         overlay.style.opacity = '0';
@@ -2175,47 +2202,6 @@ window.addEventListener('load', () => {
             }
         }, 4000);
     });
-});
-
-// ============================
-// STANDALONE CLEAR CANVAS BUTTON
-// ============================
-window.addEventListener('load', () => {
-    const clearBtn = document.createElement('div');
-    clearBtn.innerHTML = '✕';
-    clearBtn.style.position = 'fixed';
-    clearBtn.style.bottom = '14px';
-    clearBtn.style.right = '14px';
-    clearBtn.style.width = '38px';
-    clearBtn.style.height = '38px';
-    clearBtn.style.display = 'flex';
-    clearBtn.style.alignItems = 'center';
-    clearBtn.style.justifyContent = 'center';
-    clearBtn.style.fontSize = '15px';
-    clearBtn.style.fontFamily = "'Space Mono', monospace";
-    clearBtn.style.color = 'rgba(255, 138, 138, 0.9)';
-    clearBtn.style.background = 'rgba(16, 18, 22, 0.55)';
-    clearBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
-    clearBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-    clearBtn.style.borderRadius = '50%';
-    clearBtn.style.cursor = 'pointer';
-    clearBtn.style.zIndex = '50';
-    clearBtn.style.userSelect = 'none';
-    clearBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
-    clearBtn.style.transition = 'border-color 0.2s ease, transform 0.15s ease';
-    clearBtn.title = 'Clear canvas (C)';
-
-    clearBtn.addEventListener('mouseenter', () => {
-        clearBtn.style.borderColor = 'rgba(255, 138, 138, 0.5)';
-        clearBtn.style.transform = 'scale(1.08)';
-    });
-    clearBtn.addEventListener('mouseleave', () => {
-        clearBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-        clearBtn.style.transform = 'scale(1)';
-    });
-    clearBtn.addEventListener('click', clearCanvas);
-
-    document.body.appendChild(clearBtn);
 });
 
 // ============================
@@ -2393,152 +2379,4 @@ window.addEventListener('load', () => {
 
     document.body.appendChild(paletteBtn);
     document.body.appendChild(panel);
-});
-
-// ============================
-// PITCH-AWARE COLOR TOGGLE (★ button)
-// ============================
-window.addEventListener('load', () => {
-    const pitchBtn = document.createElement('div');
-    pitchBtn.innerHTML = '★';
-    pitchBtn.style.position = 'fixed';
-    pitchBtn.style.top = '60px';
-    pitchBtn.style.right = '14px';
-    pitchBtn.style.width = '38px';
-    pitchBtn.style.height = '38px';
-    pitchBtn.style.display = 'flex';
-    pitchBtn.style.alignItems = 'center';
-    pitchBtn.style.justifyContent = 'center';
-    pitchBtn.style.fontSize = '16px';
-    pitchBtn.style.fontFamily = "'Space Mono', monospace";
-    pitchBtn.style.color = 'rgba(235, 235, 240, 0.5)';
-    pitchBtn.style.background = 'rgba(16, 18, 22, 0.55)';
-    pitchBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
-    pitchBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-    pitchBtn.style.borderRadius = '50%';
-    pitchBtn.style.cursor = 'pointer';
-    pitchBtn.style.zIndex = '50';
-    pitchBtn.style.userSelect = 'none';
-    pitchBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
-    pitchBtn.style.transition = 'color 0.2s ease, border-color 0.2s ease';
-    pitchBtn.title = 'Pitch color mode (off)';
-
-    pitchBtn.addEventListener('click', () => {
-        window.__pitchAware = !window.__pitchAware;
-        if (window.__pitchAware) {
-            pitchBtn.style.color = 'rgba(255, 214, 100, 0.9)';
-            pitchBtn.style.borderColor = 'rgba(255, 214, 100, 0.45)';
-            pitchBtn.title = 'Pitch color mode (on) — low note = warm, high note = cool';
-        } else {
-            pitchBtn.style.color = 'rgba(235, 235, 240, 0.5)';
-            pitchBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-            pitchBtn.title = 'Pitch color mode (off)';
-        }
-    });
-
-    document.body.appendChild(pitchBtn);
-});
-
-// ============================
-// FULLSCREEN TOGGLE
-// ============================
-window.addEventListener('load', () => {
-    const fsBtn = document.createElement('div');
-    fsBtn.innerHTML = '⛶';
-    fsBtn.style.position = 'fixed';
-    fsBtn.style.bottom = '60px';
-    fsBtn.style.right = '14px';
-    fsBtn.style.width = '38px';
-    fsBtn.style.height = '38px';
-    fsBtn.style.display = 'flex';
-    fsBtn.style.alignItems = 'center';
-    fsBtn.style.justifyContent = 'center';
-    fsBtn.style.fontSize = '18px';
-    fsBtn.style.fontFamily = "'Space Mono', monospace";
-    fsBtn.style.color = 'rgba(235, 235, 240, 0.6)';
-    fsBtn.style.background = 'rgba(16, 18, 22, 0.55)';
-    fsBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
-    fsBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-    fsBtn.style.borderRadius = '50%';
-    fsBtn.style.cursor = 'pointer';
-    fsBtn.style.zIndex = '50';
-    fsBtn.style.userSelect = 'none';
-    fsBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
-    fsBtn.style.transition = 'border-color 0.2s ease';
-    fsBtn.title = 'Fullscreen';
-
-    fsBtn.addEventListener('mouseenter', () => {
-        fsBtn.style.borderColor = 'rgba(125, 224, 214, 0.45)';
-    });
-    fsBtn.addEventListener('mouseleave', () => {
-        fsBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-    });
-
-    fsBtn.addEventListener('click', () => {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(() => {});
-        } else {
-            document.exitFullscreen().catch(() => {});
-        }
-    });
-
-    document.fullscreenchange && document.addEventListener('fullscreenchange', () => {
-        fsBtn.innerHTML = document.fullscreenElement ? '✕' : '⛶';
-        fsBtn.title = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
-    });
-
-    document.body.appendChild(fsBtn);
-});
-
-// ============================
-// SHARE / SAVE BUTTON
-// ============================
-window.addEventListener('load', () => {
-    const shareBtn = document.createElement('div');
-    shareBtn.innerHTML = '↓';
-    shareBtn.style.position = 'fixed';
-    shareBtn.style.bottom = '106px';
-    shareBtn.style.right = '14px';
-    shareBtn.style.width = '38px';
-    shareBtn.style.height = '38px';
-    shareBtn.style.display = 'flex';
-    shareBtn.style.alignItems = 'center';
-    shareBtn.style.justifyContent = 'center';
-    shareBtn.style.fontSize = '18px';
-    shareBtn.style.fontWeight = '700';
-    shareBtn.style.fontFamily = "'Space Mono', monospace";
-    shareBtn.style.color = 'rgba(125, 224, 214, 0.9)';
-    shareBtn.style.background = 'rgba(16, 18, 22, 0.55)';
-    shareBtn.style.backdropFilter = 'blur(16px) saturate(160%)';
-    shareBtn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
-    shareBtn.style.borderRadius = '50%';
-    shareBtn.style.cursor = 'pointer';
-    shareBtn.style.zIndex = '50';
-    shareBtn.style.userSelect = 'none';
-    shareBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.2)';
-    shareBtn.style.transition = 'border-color 0.2s ease, transform 0.15s ease';
-    shareBtn.title = 'Save painting (S)';
-
-    shareBtn.addEventListener('mouseenter', () => {
-        shareBtn.style.borderColor = 'rgba(125, 224, 214, 0.45)';
-        shareBtn.style.transform = 'scale(1.08)';
-    });
-    shareBtn.addEventListener('mouseleave', () => {
-        shareBtn.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-        shareBtn.style.transform = 'scale(1)';
-    });
-
-    shareBtn.addEventListener('click', () => {
-        captureScreenshot();
-        // flash confirmation
-        const orig = shareBtn.innerHTML;
-        shareBtn.innerHTML = '✓';
-        shareBtn.style.color = 'rgba(100, 255, 180, 0.9)';
-        setTimeout(() => {
-            shareBtn.innerHTML = orig;
-            shareBtn.style.color = 'rgba(125, 224, 214, 0.9)';
-        }, 1200);
-    });
-
-    document.body.appendChild(shareBtn);
 });
