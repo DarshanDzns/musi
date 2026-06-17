@@ -381,14 +381,42 @@ function startGUI () {
         });
     });
 
-    let creditCtrl = gui.add({ fun: () => {
-        window.open('https://www.instagram.com/divakoreee/', '_blank');
-    } }, 'fun').name('created by divakar');
-    creditCtrl.__li.style.opacity = '0.55';
-    creditCtrl.__li.style.fontStyle = 'italic';
-
     gui.domElement.style.display = 'none';
     window.__fluidGUI = gui;
+
+    // ── permanent credit footer, pinned outside the GUI's own DOM so it
+    //    can never be scrolled past, collapsed, or removed by any folder logic ──
+    const creditBar = document.createElement('div');
+    creditBar.textContent = 'created by divakar';
+    creditBar.style.position = 'absolute';
+    creditBar.style.bottom = '0';
+    creditBar.style.left = '0';
+    creditBar.style.width = '100%';
+    creditBar.style.textAlign = 'center';
+    creditBar.style.padding = '8px 0';
+    creditBar.style.fontSize = '10px';
+    creditBar.style.letterSpacing = '0.05em';
+    creditBar.style.fontStyle = 'italic';
+    creditBar.style.color = 'rgba(235, 235, 240, 0.45)';
+    creditBar.style.background = 'rgba(255, 255, 255, 0.03)';
+    creditBar.style.borderTop = '1px solid rgba(255, 255, 255, 0.08)';
+    creditBar.style.cursor = 'pointer';
+    creditBar.style.userSelect = 'none';
+    creditBar.style.fontFamily = "'Space Mono', monospace";
+
+    creditBar.addEventListener('mouseenter', () => {
+        creditBar.style.color = 'rgba(125, 224, 214, 0.9)';
+    });
+    creditBar.addEventListener('mouseleave', () => {
+        creditBar.style.color = 'rgba(235, 235, 240, 0.45)';
+    });
+    creditBar.addEventListener('click', () => {
+        window.open('https://www.instagram.com/divakoreee/', '_blank');
+    });
+
+    gui.domElement.style.position = 'relative';
+    gui.domElement.style.paddingBottom = '28px';
+    gui.domElement.appendChild(creditBar);
 }
 
 function isMobile () {
@@ -1954,6 +1982,7 @@ window.addEventListener('load', () => {
         if (!gui) return;
         const visible = gui.domElement.style.display !== 'none';
         gui.domElement.style.display = visible ? 'none' : '';
+        if (!visible && window.__closePaletteMenu) window.__closePaletteMenu();
     });
 
     document.body.appendChild(gearBtn);
@@ -2379,8 +2408,18 @@ window.addEventListener('load', () => {
 
     renderPalette();
 
+    function closePaletteMenu () {
+        panel.style.display = 'none';
+    }
+    window.__closePaletteMenu = closePaletteMenu;
+
     paletteBtn.addEventListener('click', () => {
-        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+        const opening = panel.style.display === 'none';
+        panel.style.display = opening ? 'flex' : 'none';
+        if (opening) {
+            const gui = window.__fluidGUI;
+            if (gui) gui.domElement.style.display = 'none';
+        }
     });
 
     document.body.appendChild(paletteBtn);
