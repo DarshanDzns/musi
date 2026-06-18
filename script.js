@@ -39,6 +39,7 @@ let config = {
     EDGE_STRENGTH: 0.45,
     USE_PALETTE: false,
     PALETTE: ['#8ecae6', '#ffb4a2'],
+    MIC_SENSITIVITY: 0.5,
 }
 
 function pointerPrototype () {
@@ -185,6 +186,7 @@ function startGUI () {
         },
     };
 
+    paintFolder.add(config, 'MIC_SENSITIVITY', 0, 1).name('mic sensitivity');
     paintFolder.add(paintControls, 'wetness', 0, 1).name('wetness');
     paintFolder.add(config, 'SPLAT_RADIUS', 0.1, 1.0).name('thickness');
     paintFolder.add(config, 'CURL', 0, 20).step(0.5).name('swirl');
@@ -2184,10 +2186,8 @@ window.addEventListener('load', () => {
         overlay.style.opacity = '0';
         setTimeout(() => overlay.remove(), 600);
 
-        const MIC_SENSITIVITY = 0.02;
-        const SPLAT_COOLDOWN  = 90;
+        const SPLAT_COOLDOWN = 90;
         let lastFire = 0;
-        let noiseFloor = 0.005;
 
         navigator.mediaDevices.getUserMedia({ audio: true, video: false })
             .then(stream => {
@@ -2199,6 +2199,9 @@ window.addEventListener('load', () => {
                 analyser.smoothingTimeConstant = 0.3;
                 ctx.createMediaStreamSource(stream).connect(analyser);
                 const freqData = new Uint8Array(analyser.frequencyBinCount);
+
+                // expose for the waveform visualizer
+                window.__fluidAnalyser = analyser;
 
                 function loop() {
                     requestAnimationFrame(loop);
@@ -2212,10 +2215,11 @@ window.addEventListener('load', () => {
                     }
                     const level = peak / 255;
 
-                    // gently track ambient room noise, but don't let it climb
-                    // fast enough to swallow normal playing volume
-                    noiseFloor = noiseFloor * 0.999 + level * 0.001;
-                    const threshold = Math.max(MIC_SENSITIVITY, noiseFloor * 1.15);
+                    // MIC_SENSITIVITY (0–1, from the GUI slider) maps to a real
+                    // volume threshold: 0 = needs loud/deliberate sound (~0.55),
+                    // 1 = reacts to almost anything (~0.04). This replaces the
+                    // old adaptive noise-floor system, which was unpredictable.
+                    const threshold = 0.55 - (config.MIC_SENSITIVITY * 0.51);
 
                     const now = performance.now();
                     if (level > threshold && now - lastFire > SPLAT_COOLDOWN) {
@@ -2353,4 +2357,71 @@ window.addEventListener('load', () => {
         renderPalette(host);
         window.__renderPaletteUI = () => renderPalette(host);
     });
+});
+
+// ============================
+// WAVEFORM VISUALIZER — flat line at rest, moves with live mic input
+// Sits along the bottom of the screen, unobtrusive.
+// ============================
+window.addEventListener('load', () => {
+    const wrap = document.createElement('div');
+    wrap.style.position = 'fixed';
+    wrap.style.bottom = '0';
+    wrap.style.left = '0';
+    wrap.style.width = '100%';
+    wrap.style.height = '60px';
+    wrap.style.zIndex = '45';
+    wrap.style.pointerEvents = 'none';
+    wrap.style.opacity = '0.55';
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '60');
+    svg.setAttribute('viewBox', '0 0 1000 60');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.style.display = 'block';
+
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'rgba(125, 224, 214, 0.55)');
+    path.setAttribute('stroke-width', '1.5');
+    svg.appendChild(path);
+    wrap.appendChild(svg);
+    document.body.appendChild(wrap);
+
+    const POINTS = 100;
+    const timeData = new Uint8Array(2048);
+
+    function flatPath () {
+        let d = `M 0 30`;
+        for (let i = 1; i < POINTS; i++) {
+            d += ` L ${(i / (POINTS - 1)) * 1000} 30`;
+        }
+        return d;
+    }
+    path.setAttribute('d', flatPath());
+
+    function draw () {
+        requestAnimationFrame(draw);
+        const analyser = window.__fluidAnalyser;
+
+        if (!analyser) {
+            path.setAttribute('d', flatPath());
+            return;
+        }
+
+        analyser.getByteTimeDomainData(timeData);
+        const step = Math.floor(timeData.length / POINTS);
+
+        let d = '';
+        for (let i = 0; i < POINTS; i++) {
+            const sample = timeData[i * step] / 255; // 0..1, 0.5 = silence
+            const y = 30 + (sample - 0.5) * 50;
+            const x = (i / (POINTS - 1)) * 1000;
+            d += (i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+        }
+        path.setAttribute('d', d);
+    }
+    draw();
 });
